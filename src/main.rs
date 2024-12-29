@@ -11,6 +11,7 @@ pub struct CameraController {
     is_down_pressed: bool,
     is_left_pressed: bool,
     is_right_pressed: bool,
+    mouse_wheel: f32,
 }
 impl CameraController {
     pub fn new(speed: f32) -> Self {
@@ -20,6 +21,7 @@ impl CameraController {
             is_down_pressed: false,
             is_left_pressed: false,
             is_right_pressed: false,
+            mouse_wheel: 0.0,
         }
     }
     pub fn process_events(&mut self, event: &WindowEvent) -> bool {
@@ -203,7 +205,7 @@ impl<'a> State<'a> {
         };
 
         let mut camera = Camera::new(size.width as f32 / size.height as f32);
-        let camera_controller = CameraController::new(0.1);
+        let camera_controller = CameraController::new(0.05);
         let camera_uniform = CameraUniform::new(&camera);
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: None,
