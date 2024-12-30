@@ -8,9 +8,7 @@ struct CameraUniform {
 @group(0) @binding(0)
 var<uniform> camera: CameraUniform;
 @group(0) @binding(1)
-var<storage, read> buff: array<u32>;
-@group(0) @binding(2)
-var<uniform> size: vec2<u32>;
+var tex: texture_2d<u32>;
 
 struct VertexInput {
     @builtin(vertex_index) vertex_index: u32
@@ -44,18 +42,11 @@ fn vs_main(input: VertexInput) -> VertexOutput {
     return out;
 }
 
-fn get_index(x: u32, y: u32) -> u32 {
-  let h = size.y;
-  let w = size.x;
-
-  return (y % h) * w + (x % w);
-}
-
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-    let base_uv = vec2<u32>(input.uv * vec2<f32>(size));
-    let index = get_index(base_uv.x, base_uv.y);
-    let val = buff[index];
+    // since texture is u32, need to use integer pixel uv instead of float
+    let base_uv = vec2<i32>(input.uv * vec2<f32>(textureDimensions(tex)));
+    let val = textureLoad(tex, base_uv, 0).x;
     if (val == 1) {
         return vec4<f32>(1.0, 1.0, 1.0, 1.0);
     } else {
