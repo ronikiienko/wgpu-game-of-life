@@ -1,9 +1,12 @@
+mod game_of_life;
+
 use glam::{vec2, Mat3, Mat4, Vec2};
 use wgpu::util::DeviceExt;
 use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowBuilder};
+use crate::game_of_life::GameOfLife;
 
 pub struct CameraController {
     speed: f32,
@@ -151,6 +154,7 @@ struct State<'a> {
     bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
     camera_buffer: wgpu::Buffer,
+    game_of_life: GameOfLife
 }
 impl<'a> State<'a> {
     pub async fn new(window: &'a Window) -> Self {
@@ -278,6 +282,8 @@ impl<'a> State<'a> {
             },
         });
 
+        let game_of_life = GameOfLife::new(&device, 100, 100);
+
         Self {
             surface,
             surface_config,
@@ -292,6 +298,7 @@ impl<'a> State<'a> {
             bind_group_layout,
             bind_group,
             camera_buffer,
+            game_of_life
         }
     }
 
@@ -328,6 +335,8 @@ impl<'a> State<'a> {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+        let source = self.game_of_life.update(&self.device, &mut encoder);
 
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
