@@ -74,7 +74,7 @@ impl GameOfLifeFrag {
             label: Some("Game of Life Bind Group Layout"),
             entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
-                visibility: wgpu::ShaderStages::FRAGMENT,
+                visibility: wgpu::ShaderStages::FRAGMENT | wgpu::ShaderStages::VERTEX,
                 count: None,
                 ty: wgpu::BindingType::Texture {
                     multisampled: false,

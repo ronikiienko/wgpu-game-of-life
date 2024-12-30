@@ -308,7 +308,7 @@ impl<'a> State<'a> {
             },
         });
 
-        let game_of_life = GameOfLifeFrag::new(&device, &queue, 2500, 2500, Duration::from_millis(0));
+        let game_of_life = GameOfLifeFrag::new(&device, &queue, 25000, 25000, Duration::from_millis(0));
 
         let mut perf_monitor = PerfMonitor::new();
         perf_monitor.start("update");
