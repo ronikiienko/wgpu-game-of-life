@@ -1,5 +1,6 @@
 mod game_of_life_frag;
 mod perf_monitor;
+mod game_of_life_compute;
 
 use std::time::Duration;
 use crate::game_of_life_frag::GameOfLifeFrag;
