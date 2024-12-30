@@ -227,6 +227,7 @@ impl<'a> State<'a> {
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
         };
+        surface.configure(&device, &surface_config);
 
         let mut camera = Camera::new(size.width as f32 / size.height as f32);
         let camera_controller = CameraController::new(0.05);
@@ -306,7 +307,7 @@ impl<'a> State<'a> {
             },
         });
 
-        let game_of_life = GameOfLife::new(&device, &queue, 300, 300, Duration::from_millis(40));
+        let game_of_life = GameOfLife::new(&device, &queue, 25000, 25000, Duration::from_millis(0));
 
         let mut perf_monitor = PerfMonitor::new();
         perf_monitor.start("update");
