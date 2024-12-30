@@ -9,7 +9,10 @@ struct ComputeInput {
 }
 
 fn get_index(x: u32, y: u32) -> u32 {
-    return (y % size.y) * x + (x % size.x);
+  let h = size.y;
+  let w = size.x;
+
+  return (y % h) * w + (x % w);
 }
 
 fn get_cell(x: u32, y: u32) -> u32 {

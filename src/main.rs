@@ -13,6 +13,9 @@ use winit::window::{Window, WindowBuilder};
 use crate::game_of_life_compute::GameOfLifeCompute;
 use crate::perf_monitor::PerfMonitor;
 
+const GOL_SIZE: u32 = 18000u32;
+const GOL_SIZE_U64: u64 = GOL_SIZE as u64;
+
 pub struct CameraController {
     speed: f32,
     is_up_pressed: bool,
@@ -165,7 +168,7 @@ struct State<'a> {
     queue: wgpu::Queue,
     surface: wgpu::Surface<'a>,
     surface_config: wgpu::SurfaceConfiguration,
-    size: winit::dpi::PhysicalSize<u32>,
+    window_size: winit::dpi::PhysicalSize<u32>,
     pipeline: wgpu::RenderPipeline,
     camera: Camera,
     camera_controller: CameraController,
@@ -174,11 +177,12 @@ struct State<'a> {
     camera_buffer: wgpu::Buffer,
     game_of_life_frag: GameOfLifeFrag,
     game_of_life_compute: GameOfLifeCompute,
-    perf_monitor: PerfMonitor
+    perf_monitor: PerfMonitor,
+    size_buffer: wgpu::Buffer
 }
 impl<'a> State<'a> {
     pub async fn new(window: &'a Window) -> Self {
-        let size = window.inner_size();
+        let window_size = window.inner_size();
 
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
@@ -202,6 +206,8 @@ impl<'a> State<'a> {
                     memory_hints: Default::default(),
                     required_limits: wgpu::Limits {
                         max_texture_dimension_2d: 16384 * 2,
+                        max_buffer_size: GOL_SIZE_U64 * GOL_SIZE_U64 * 4,
+                        max_storage_buffer_binding_size: GOL_SIZE * GOL_SIZE * 4,
                         ..Default::default()
                     },
                 },
@@ -223,8 +229,8 @@ impl<'a> State<'a> {
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
-            width: size.width,
-            height: size.height,
+            width: window_size.width,
+            height: window_size.height,
             present_mode: surface_caps.present_modes[0],
             alpha_mode: surface_caps.alpha_modes[0],
             view_formats: vec![],
@@ -232,7 +238,7 @@ impl<'a> State<'a> {
         };
         surface.configure(&device, &surface_config);
 
-        let mut camera = Camera::new(size.width as f32 / size.height as f32);
+        let mut camera = Camera::new(window_size.width as f32 / window_size.height as f32);
         let camera_controller = CameraController::new(0.05);
         let camera_uniform = CameraUniform::new(&camera);
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -255,14 +261,24 @@ impl<'a> State<'a> {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
-                    ty: wgpu::BindingType::Texture {
-                        multisampled: false,
-                        sample_type: wgpu::TextureSampleType::Uint,
-                        view_dimension: wgpu::TextureViewDimension::D2,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
                     },
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        min_binding_size: None,
+                        has_dynamic_offset: false,
+                    },
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    count: None,
+                }
             ],
         });
 
@@ -310,8 +326,14 @@ impl<'a> State<'a> {
             },
         });
 
-        let game_of_life_compute = GameOfLifeCompute::new(&device, &queue, 80, 80, Duration::from_millis(0));
-        let game_of_life_frag = GameOfLifeFrag::new(&device, &queue, 25000, 25000, Duration::from_millis(0));
+        let game_of_life_compute = GameOfLifeCompute::new(&device, &queue, GOL_SIZE, GOL_SIZE, Duration::from_millis(0));
+        let game_of_life_frag = GameOfLifeFrag::new(&device, &queue, GOL_SIZE, GOL_SIZE, Duration::from_millis(40));
+
+        let size_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::cast_slice(&[GOL_SIZE, GOL_SIZE]),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
 
         let mut perf_monitor = PerfMonitor::new();
         perf_monitor.start("update");
@@ -322,7 +344,7 @@ impl<'a> State<'a> {
             queue,
             device,
             window,
-            size,
+            window_size,
             pipeline,
             camera,
             camera_controller,
@@ -331,7 +353,8 @@ impl<'a> State<'a> {
             camera_buffer,
             game_of_life_compute,
             game_of_life_frag,
-            perf_monitor
+            perf_monitor,
+            size_buffer
         }
     }
 
@@ -339,7 +362,7 @@ impl<'a> State<'a> {
         if new_size.width <= 0 || new_size.height <= 0 {
             return;
         }
-        self.size = new_size;
+        self.window_size = new_size;
         self.surface_config.width = new_size.width;
         self.surface_config.height = new_size.height;
         self.surface.configure(&self.device, &self.surface_config);
@@ -375,6 +398,7 @@ impl<'a> State<'a> {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
         let source = self.game_of_life_frag.update(&self.device, &mut encoder);
+        let source_buffer = self.game_of_life_compute.update(&self.device, &mut encoder);
 
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             entries: &[
@@ -384,8 +408,12 @@ impl<'a> State<'a> {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::TextureView(source),
+                    resource: source_buffer.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: self.size_buffer.as_entire_binding(),
+                }
             ],
             label: None,
             layout: &self.bind_group_layout,
@@ -455,7 +483,7 @@ async fn run() {
                                     // Reconfigure the surface if it's lost or outdated
                                     Err(
                                         wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
-                                    ) => state.resize(state.size),
+                                    ) => state.resize(state.window_size),
                                     // The system is out of memory, we should probably quit
                                     Err(wgpu::SurfaceError::OutOfMemory) => {
                                         log::error!("OutOfMemory");
