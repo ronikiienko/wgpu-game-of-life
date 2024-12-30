@@ -9,7 +9,6 @@ pub struct GameOfLife {
     read_from_a: bool,
     pipeline: wgpu::RenderPipeline,
     bind_group_layout: wgpu::BindGroupLayout,
-    sampler: wgpu::Sampler,
     last_update: std::time::Instant,
     interval: Duration,
 }
@@ -61,16 +60,6 @@ impl GameOfLife {
             descriptor.size,
         );
 
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("Game of Life Sampler"),
-            min_filter: wgpu::FilterMode::Nearest,
-            mag_filter: wgpu::FilterMode::Nearest,
-            address_mode_w: wgpu::AddressMode::MirrorRepeat,
-            address_mode_v: wgpu::AddressMode::MirrorRepeat,
-            address_mode_u: wgpu::AddressMode::MirrorRepeat,
-            ..Default::default()
-        });
-
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Game of Life Bind Group Layout"),
             entries: &[
@@ -83,12 +72,6 @@ impl GameOfLife {
                         sample_type: wgpu::TextureSampleType::Uint,
                         view_dimension: wgpu::TextureViewDimension::D2,
                     },
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    count: None,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
                 },
             ],
         });
@@ -139,7 +122,6 @@ impl GameOfLife {
         });
 
         Self {
-            sampler,
             tex_a,
             tex_b,
             tex_a_view,
@@ -176,10 +158,6 @@ impl GameOfLife {
                 wgpu::BindGroupEntry {
                     binding: 0,
                     resource: wgpu::BindingResource::TextureView(read_from_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&self.sampler),
                 },
             ],
             label: Some("Game of Life Bind Group"),
