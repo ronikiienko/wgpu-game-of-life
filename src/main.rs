@@ -307,7 +307,7 @@ impl<'a> State<'a> {
             },
         });
 
-        let game_of_life = GameOfLifeFrag::new(&device, &queue, 25000, 25000, Duration::from_millis(0));
+        let game_of_life = GameOfLifeFrag::new(&device, &queue, 2500, 2500, Duration::from_millis(0));
 
         let mut perf_monitor = PerfMonitor::new();
         perf_monitor.start("update");
@@ -352,7 +352,12 @@ impl<'a> State<'a> {
             &self.camera_buffer,
             0,
             bytemuck::cast_slice(&[self.camera_uniform]),
-        )
+        );
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: None,
+        });
+        self.game_of_life.update(&self.device, &mut encoder);
+        self.queue.submit(Some(encoder.finish()));
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -369,8 +374,6 @@ impl<'a> State<'a> {
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        let source = self.game_of_life.update(&self.device, &mut encoder);
-
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             entries: &[
                 wgpu::BindGroupEntry {
@@ -379,7 +382,7 @@ impl<'a> State<'a> {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::TextureView(source),
+                    resource: wgpu::BindingResource::TextureView(self.game_of_life.get_current_view()),
                 },
             ],
             label: None,

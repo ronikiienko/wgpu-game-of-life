@@ -134,25 +134,40 @@ impl GameOfLifeFrag {
         }
     }
 
+    fn get_read_view(&self) -> &wgpu::TextureView {
+        if self.read_from_a {
+            &self.tex_a_view
+        } else {
+            &self.tex_b_view
+        }
+    }
+    fn get_write_view(&self) -> &wgpu::TextureView {
+        if self.read_from_a {
+            &self.tex_b_view
+        } else {
+            &self.tex_a_view
+        }
+    }
+
+    /// Internally, the game of life simulation uses two textures to store the state of the cells.
+    /// One texture is currently read from, while the other is written to.
+    /// This function alternates between the two textures. And you should use returned view for each frame.
+    pub fn get_current_view(&self) -> &wgpu::TextureView {
+        self.get_read_view()
+    }
+
     pub fn update(
         &mut self,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
-    ) -> &wgpu::TextureView {
-        let read_from_view = if self.read_from_a {
-            &self.tex_a_view
-        } else {
-            &self.tex_b_view
-        };
-        let write_to_view = if self.read_from_a {
-            &self.tex_b_view
-        } else {
-            &self.tex_a_view
-        };
+    ) {
         if self.last_update.elapsed() < self.interval {
-            return read_from_view;
+            return;
         }
         self.last_update = std::time::Instant::now();
+        let read_from_view = self.get_read_view();
+        let write_to_view = self.get_write_view();
+
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             entries: &[
                 wgpu::BindGroupEntry {
@@ -184,6 +199,5 @@ impl GameOfLifeFrag {
             render_pass.draw(0..6, 0..1);
         }
         self.read_from_a = !self.read_from_a;
-        read_from_view
     }
 }
