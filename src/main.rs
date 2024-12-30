@@ -15,7 +15,7 @@ pub struct CameraController {
     is_down_pressed: bool,
     is_left_pressed: bool,
     is_right_pressed: bool,
-    mouse_wheel: f32,
+    wheel: f32,
 }
 impl CameraController {
     pub fn new(speed: f32) -> Self {
@@ -25,7 +25,7 @@ impl CameraController {
             is_down_pressed: false,
             is_left_pressed: false,
             is_right_pressed: false,
-            mouse_wheel: 0.0,
+            wheel: 0.0,
         }
     }
     pub fn process_events(&mut self, event: &WindowEvent) -> bool {
@@ -60,10 +60,21 @@ impl CameraController {
                     _ => false,
                 }
             }
+            WindowEvent::MouseWheel { delta, .. } => {
+                match delta {
+                    winit::event::MouseScrollDelta::LineDelta(_, y) => {
+                        self.wheel = *y;
+                    }
+                    winit::event::MouseScrollDelta::PixelDelta(pos) => {
+                        self.wheel = pos.y as f32;
+                    }
+                }
+                true
+            }
             _ => false,
         }
     }
-    pub fn update_camera(&self, camera: &mut Camera) {
+    pub fn update_camera(&mut self, camera: &mut Camera) {
         let mut movement = Vec2::ZERO;
         if self.is_up_pressed {
             movement.y += 1.0;
@@ -77,7 +88,10 @@ impl CameraController {
         if self.is_right_pressed {
             movement.x += 1.0;
         }
-        camera.position += movement.normalize_or_zero() * self.speed;
+        camera.zoom *= 1.0 - self.wheel * 0.04;
+        camera.zoom = camera.zoom.clamp(0.01, 10.0);
+        camera.position += movement.normalize_or_zero() * self.speed * camera.zoom;
+        self.wheel = 0.0;
     }
 }
 pub struct Camera {
@@ -180,7 +194,10 @@ impl<'a> State<'a> {
                     label: None,
                     required_features: wgpu::Features::empty(),
                     memory_hints: Default::default(),
-                    required_limits: wgpu::Limits::default(),
+                    required_limits: wgpu::Limits {
+                        max_texture_dimension_2d: 16384 * 2,
+                        ..Default::default()
+                    },
                 },
                 None,
             )
@@ -286,7 +303,7 @@ impl<'a> State<'a> {
             },
         });
 
-        let game_of_life = GameOfLife::new(&device, &queue, 80, 80, Duration::from_millis(40));
+        let game_of_life = GameOfLife::new(&device, &queue, 30000, 30000, Duration::from_millis(40));
 
         Self {
             surface,
