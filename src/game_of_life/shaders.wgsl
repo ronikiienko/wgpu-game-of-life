@@ -32,27 +32,18 @@ fn vs_main(input: VertexInput) -> VertexOutput {
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) u32 {
-   // since texture is u32, need to use integer pixel uv instead of float
    let base_uv = vec2<i32>(input.uv * vec2<f32>(textureDimensions(tex)));
 
-   var neighbors_alive: u32 = 0;
-   for (var x: i32 = -1; x <= 1; x++) {
-       for (var y: i32 = -1; y <= 1; y++) {
-           if (x == 0 && y == 0) {
-               continue;
-           }
-           let offset = vec2<i32>(x, y);
-           let uv = base_uv + offset;
-           neighbors_alive += textureLoad(tex, uv, 0).x;
-       }
-   }
+    let neighbors_alive = textureLoad(tex, base_uv + vec2<i32>(-1, -1), 0).x +
+        textureLoad(tex, base_uv + vec2<i32>(-1, 0), 0).x +
+        textureLoad(tex, base_uv + vec2<i32>(-1, 1), 0).x +
+        textureLoad(tex, base_uv + vec2<i32>(0, -1), 0).x +
+        textureLoad(tex, base_uv + vec2<i32>(0, 1), 0).x +
+        textureLoad(tex, base_uv + vec2<i32>(1, -1), 0).x +
+        textureLoad(tex, base_uv + vec2<i32>(1, 0), 0).x +
+        textureLoad(tex, base_uv + vec2<i32>(1, 1), 0).x;
 
    let curr_value = textureLoad(tex, base_uv, 0).x;
-   if (neighbors_alive == 3) {
-       return 1u;
-   } else if (curr_value == 1 && neighbors_alive == 2) {
-       return 1u;
-   } else {
-       return 0u;
-   }
+
+   return u32(neighbors_alive == 3 || (curr_value == 1 && neighbors_alive == 2));
 }
