@@ -1,5 +1,5 @@
-use std::time::Duration;
 use rand::Rng;
+use std::time::Duration;
 
 pub struct GameOfLifeFrag {
     tex_a: wgpu::Texture,
@@ -13,7 +13,13 @@ pub struct GameOfLifeFrag {
     interval: Duration,
 }
 impl GameOfLifeFrag {
-    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, width: u32, height: u32, interval: Duration) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        width: u32,
+        height: u32,
+        interval: Duration,
+    ) -> Self {
         let texture_format = wgpu::TextureFormat::R8Uint;
         let descriptor = wgpu::TextureDescriptor {
             size: wgpu::Extent3d {
@@ -22,7 +28,9 @@ impl GameOfLifeFrag {
                 depth_or_array_layers: 1,
             },
             label: None,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_DST,
             format: texture_format,
             dimension: wgpu::TextureDimension::D2,
             mip_level_count: 1,
@@ -36,14 +44,16 @@ impl GameOfLifeFrag {
         let tex_b_view = tex_b.create_view(&view_descriptor);
 
         let mut rng = rand::thread_rng();
-        let initial_state: Vec<u8> = (0..width * height).map(|_| {
-            let num: u32 = rng.gen_range(0..10);
-            if num == 0 {
-                return 1;
-            } else {
-                return 0;
-            }
-        }).collect();
+        let initial_state: Vec<u8> = (0..width * height)
+            .map(|_| {
+                let num: u32 = rng.gen_range(0..10);
+                if num == 0 {
+                    return 1;
+                } else {
+                    return 0;
+                }
+            })
+            .collect();
         queue.write_texture(
             wgpu::ImageCopyTexture {
                 texture: &tex_a,
@@ -62,18 +72,16 @@ impl GameOfLifeFrag {
 
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Game of Life Bind Group Layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    count: None,
-                    ty: wgpu::BindingType::Texture {
-                        multisampled: false,
-                        sample_type: wgpu::TextureSampleType::Uint,
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                    },
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                count: None,
+                ty: wgpu::BindingType::Texture {
+                    multisampled: false,
+                    sample_type: wgpu::TextureSampleType::Uint,
+                    view_dimension: wgpu::TextureViewDimension::D2,
                 },
-            ],
+            }],
         });
 
         let shader_module = device.create_shader_module(wgpu::include_wgsl!("shaders.wgsl"));
@@ -141,11 +149,25 @@ impl GameOfLifeFrag {
             &self.tex_b_view
         }
     }
+    fn get_read_texture(&self) -> &wgpu::Texture {
+        if self.read_from_a {
+            &self.tex_a
+        } else {
+            &self.tex_b
+        }
+    }
     fn get_write_view(&self) -> &wgpu::TextureView {
         if self.read_from_a {
             &self.tex_b_view
         } else {
             &self.tex_a_view
+        }
+    }
+    fn get_write_texture(&self) -> &wgpu::Texture {
+        if self.read_from_a {
+            &self.tex_b
+        } else {
+            &self.tex_a
         }
     }
 
@@ -157,11 +179,7 @@ impl GameOfLifeFrag {
         self.get_read_view()
     }
 
-    pub fn update(
-        &mut self,
-        device: &wgpu::Device,
-        encoder: &mut wgpu::CommandEncoder,
-    ) {
+    pub fn update(&mut self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder) {
         if self.last_update.elapsed() < self.interval {
             return;
         }
@@ -170,12 +188,10 @@ impl GameOfLifeFrag {
         let write_to_view = self.get_write_view();
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(read_from_view),
-                },
-            ],
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(read_from_view),
+            }],
             label: Some("Game of Life Bind Group"),
             layout: &self.bind_group_layout,
         });
@@ -204,5 +220,38 @@ impl GameOfLifeFrag {
 
     pub fn get_size(&self) -> (u32, u32) {
         (self.tex_a.size().width, self.tex_a.size().height)
+    }
+
+    pub fn load_area(
+        &self,
+        queue: &wgpu::Queue,
+        data: &[u8],
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+    ) {
+        if width * height != data.len() as u32 {
+            panic!("Data size does not match the area size");
+        }
+        queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: self.get_read_texture(),
+                origin: wgpu::Origin3d { x, y, z: 0 },
+                aspect: wgpu::TextureAspect::All,
+                mip_level: 0,
+            },
+            data,
+            wgpu::ImageDataLayout {
+                rows_per_image: Some(height),
+                bytes_per_row: Some(width),
+                offset: 0,
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        )
     }
 }
