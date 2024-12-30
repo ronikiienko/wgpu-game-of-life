@@ -175,7 +175,6 @@ struct State<'a> {
     camera_uniform: CameraUniform,
     bind_group_layout: wgpu::BindGroupLayout,
     camera_buffer: wgpu::Buffer,
-    game_of_life_frag: GameOfLifeFrag,
     game_of_life_compute: GameOfLifeCompute,
     perf_monitor: PerfMonitor,
     size_buffer: wgpu::Buffer
@@ -327,7 +326,6 @@ impl<'a> State<'a> {
         });
 
         let game_of_life_compute = GameOfLifeCompute::new(&device, &queue, GOL_SIZE, GOL_SIZE, Duration::from_millis(0));
-        let game_of_life_frag = GameOfLifeFrag::new(&device, &queue, GOL_SIZE, GOL_SIZE, Duration::from_millis(40));
 
         let size_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: None,
@@ -352,7 +350,6 @@ impl<'a> State<'a> {
             bind_group_layout,
             camera_buffer,
             game_of_life_compute,
-            game_of_life_frag,
             perf_monitor,
             size_buffer
         }
@@ -397,7 +394,6 @@ impl<'a> State<'a> {
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        let source = self.game_of_life_frag.update(&self.device, &mut encoder);
         let source_buffer = self.game_of_life_compute.update(&self.device, &mut encoder);
 
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
