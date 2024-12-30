@@ -43,33 +43,6 @@ impl GameOfLifeFrag {
         let tex_a_view = tex_a.create_view(&view_descriptor);
         let tex_b_view = tex_b.create_view(&view_descriptor);
 
-        let mut rng = rand::thread_rng();
-        let initial_state: Vec<u8> = (0..width * height)
-            .map(|_| {
-                let num: u32 = rng.gen_range(0..10);
-                if num == 0 {
-                    return 1;
-                } else {
-                    return 0;
-                }
-            })
-            .collect();
-        queue.write_texture(
-            wgpu::ImageCopyTexture {
-                texture: &tex_a,
-                mip_level: 0,
-                aspect: wgpu::TextureAspect::All,
-                origin: wgpu::Origin3d::ZERO,
-            },
-            &initial_state,
-            wgpu::ImageDataLayout {
-                rows_per_image: Some(height),
-                bytes_per_row: Some(width),
-                offset: 0,
-            },
-            descriptor.size,
-        );
-
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Game of Life Bind Group Layout"),
             entries: &[wgpu::BindGroupLayoutEntry {
