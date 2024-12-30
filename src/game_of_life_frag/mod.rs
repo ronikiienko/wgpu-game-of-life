@@ -179,6 +179,7 @@ impl GameOfLifeFrag {
         self.get_read_view()
     }
 
+    /// This function should not be called multiple times before passed encoder is submitted.
     pub fn update(&mut self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder) {
         if self.last_update.elapsed() < self.interval {
             return;
@@ -222,6 +223,7 @@ impl GameOfLifeFrag {
         (self.tex_a.size().width, self.tex_a.size().height)
     }
 
+    /// This method should NOT be called after update() is called and before passed encoder is submitted.
     pub fn load_area(
         &self,
         queue: &wgpu::Queue,
