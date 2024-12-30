@@ -38,6 +38,9 @@ fn fs_main(input: VertexOutput) -> @location(0) u32 {
    var neighbors_alive: u32 = 0;
    for (var x: i32 = -1; x <= 1; x++) {
        for (var y: i32 = -1; y <= 1; y++) {
+           if (x == 0 && y == 0) {
+               continue;
+           }
            let offset = vec2<i32>(x, y);
            let uv = base_uv + offset;
            neighbors_alive += textureLoad(tex, uv, 0).x;
