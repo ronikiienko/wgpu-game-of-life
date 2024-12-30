@@ -39,7 +39,11 @@ impl GameOfLifeCompute {
         let buffer_a = device.create_buffer(&buffer_descriptor);
         let mut rng = rand::thread_rng();
         let values: Vec<u32> = (0..width * height)
-            .map(|_| {
+            .map(|i| {
+                if i > width {
+                    return 0;
+                }
+                return 1;
                 let num: u32 = rng.gen_range(0..10);
                 if num == 0 {
                     return 1;
