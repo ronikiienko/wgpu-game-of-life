@@ -1,7 +1,7 @@
 use std::time::Duration;
 use rand::Rng;
 
-pub struct GameOfLife {
+pub struct GameOfLifeFrag {
     tex_a: wgpu::Texture,
     tex_b: wgpu::Texture,
     tex_a_view: wgpu::TextureView,
@@ -12,7 +12,7 @@ pub struct GameOfLife {
     last_update: std::time::Instant,
     interval: Duration,
 }
-impl GameOfLife {
+impl GameOfLifeFrag {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, width: u32, height: u32, interval: Duration) -> Self {
         let texture_format = wgpu::TextureFormat::R8Uint;
         let descriptor = wgpu::TextureDescriptor {

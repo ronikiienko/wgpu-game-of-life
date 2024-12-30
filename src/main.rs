@@ -1,8 +1,8 @@
-mod game_of_life;
+mod game_of_life_frag;
 mod perf_monitor;
 
 use std::time::Duration;
-use crate::game_of_life::GameOfLife;
+use crate::game_of_life_frag::GameOfLifeFrag;
 use glam::{vec2, Mat3, Mat4, Vec2};
 use wgpu::util::DeviceExt;
 use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
@@ -170,7 +170,7 @@ struct State<'a> {
     camera_uniform: CameraUniform,
     bind_group_layout: wgpu::BindGroupLayout,
     camera_buffer: wgpu::Buffer,
-    game_of_life: GameOfLife,
+    game_of_life: GameOfLifeFrag,
     perf_monitor: PerfMonitor
 }
 impl<'a> State<'a> {
@@ -307,7 +307,7 @@ impl<'a> State<'a> {
             },
         });
 
-        let game_of_life = GameOfLife::new(&device, &queue, 25000, 25000, Duration::from_millis(0));
+        let game_of_life = GameOfLifeFrag::new(&device, &queue, 25000, 25000, Duration::from_millis(0));
 
         let mut perf_monitor = PerfMonitor::new();
         perf_monitor.start("update");
