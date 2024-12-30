@@ -19,6 +19,10 @@ fn get_cell(x: u32, y: u32) -> u32 {
     return read[get_index(x, y)];
 }
 
+fn set_cell(x: u32, y: u32, value: u32) {
+    write[get_index(x, y)] = value;
+}
+
 fn count_neighbors(x: u32, y: u32) -> u32 {
     return get_cell(x - 1, y - 1) +
         get_cell(x - 1, y) +
@@ -38,5 +42,5 @@ fn main(input: ComputeInput) {
 
     let neighbors_alive = count_neighbors(x, y);
 
-    write[get_index(x, y)] = u32(neighbors_alive == 3 || (get_cell(x, y) == 1 && neighbors_alive == 2));
+    set_cell(x, y, u32(neighbors_alive == 3 || (get_cell(x, y) == 1 && neighbors_alive == 2)));
 }
