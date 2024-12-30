@@ -151,7 +151,8 @@ impl GameOfLifeFrag {
 
     /// Internally, the game of life simulation uses two textures to store the state of the cells.
     /// One texture is currently read from, while the other is written to.
-    /// This function alternates between the two textures. And you should use returned view for each frame.
+    /// This function alternates between the two textures. You should update view that is used for rendering after each update.
+    /// This is view to texture that uses R8Uint format, where 1 means alive and 0 means dead for each cell.
     pub fn get_current_view(&self) -> &wgpu::TextureView {
         self.get_read_view()
     }
@@ -199,5 +200,9 @@ impl GameOfLifeFrag {
             render_pass.draw(0..6, 0..1);
         }
         self.read_from_a = !self.read_from_a;
+    }
+
+    pub fn get_size(&self) -> (u32, u32) {
+        (self.tex_a.size().width, self.tex_a.size().height)
     }
 }
