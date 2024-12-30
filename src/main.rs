@@ -1,12 +1,13 @@
 mod game_of_life;
 
+use std::time::Duration;
+use crate::game_of_life::GameOfLife;
 use glam::{vec2, Mat3, Mat4, Vec2};
 use wgpu::util::DeviceExt;
 use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowBuilder};
-use crate::game_of_life::GameOfLife;
 
 pub struct CameraController {
     speed: f32,
@@ -152,9 +153,8 @@ struct State<'a> {
     camera_controller: CameraController,
     camera_uniform: CameraUniform,
     bind_group_layout: wgpu::BindGroupLayout,
-    bind_group: wgpu::BindGroup,
     camera_buffer: wgpu::Buffer,
-    game_of_life: GameOfLife
+    game_of_life: GameOfLife,
 }
 impl<'a> State<'a> {
     pub async fn new(window: &'a Window) -> Self {
@@ -218,24 +218,28 @@ impl<'a> State<'a> {
         });
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: None,
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    min_binding_size: None,
-                    has_dynamic_offset: false,
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        min_binding_size: None,
+                        has_dynamic_offset: false,
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
-        });
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: camera_buffer.as_entire_binding(),
-            }],
-            label: None,
-            layout: &bind_group_layout,
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        sample_type: wgpu::TextureSampleType::Uint,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                    },
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    count: None,
+                },
+            ],
         });
 
         let shader_module = device.create_shader_module(wgpu::include_wgsl!("shaders.wgsl"));
@@ -282,7 +286,7 @@ impl<'a> State<'a> {
             },
         });
 
-        let game_of_life = GameOfLife::new(&device, 100, 100);
+        let game_of_life = GameOfLife::new(&device, &queue, 80, 80, Duration::from_millis(40));
 
         Self {
             surface,
@@ -296,9 +300,8 @@ impl<'a> State<'a> {
             camera_controller,
             camera_uniform,
             bind_group_layout,
-            bind_group,
             camera_buffer,
-            game_of_life
+            game_of_life,
         }
     }
 
@@ -338,6 +341,21 @@ impl<'a> State<'a> {
 
         let source = self.game_of_life.update(&self.device, &mut encoder);
 
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: self.camera_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(source),
+                },
+            ],
+            label: None,
+            layout: &self.bind_group_layout,
+        });
+
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: None,
@@ -354,8 +372,8 @@ impl<'a> State<'a> {
                 occlusion_query_set: None,
             });
             render_pass.set_pipeline(&self.pipeline);
-            render_pass.set_bind_group(0, Some(&self.bind_group), &[]);
-            render_pass.draw(0..3, 0..1);
+            render_pass.set_bind_group(0, Some(&bind_group), &[]);
+            render_pass.draw(0..6, 0..1);
         }
 
         self.queue.submit(Some(encoder.finish()));

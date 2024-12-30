@@ -1,3 +1,6 @@
+use std::time::Duration;
+use rand::Rng;
+
 pub struct GameOfLife {
     tex_a: wgpu::Texture,
     tex_b: wgpu::Texture,
@@ -7,9 +10,11 @@ pub struct GameOfLife {
     pipeline: wgpu::RenderPipeline,
     bind_group_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
+    last_update: std::time::Instant,
+    interval: Duration,
 }
 impl GameOfLife {
-    pub fn new(device: &wgpu::Device, width: u32, height: u32) -> Self {
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, width: u32, height: u32, interval: Duration) -> Self {
         let texture_format = wgpu::TextureFormat::R8Uint;
         let descriptor = wgpu::TextureDescriptor {
             size: wgpu::Extent3d {
@@ -18,7 +23,7 @@ impl GameOfLife {
                 depth_or_array_layers: 1,
             },
             label: None,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             format: texture_format,
             dimension: wgpu::TextureDimension::D2,
             mip_level_count: 1,
@@ -30,6 +35,31 @@ impl GameOfLife {
         let tex_b = device.create_texture(&descriptor);
         let tex_a_view = tex_a.create_view(&view_descriptor);
         let tex_b_view = tex_b.create_view(&view_descriptor);
+
+        let mut rng = rand::thread_rng();
+        let initial_state: Vec<u8> = (0..width * height).map(|_| {
+            let num: u32 = rng.gen_range(0..10);
+            if num == 0 {
+                return 1;
+            } else {
+                return 0;
+            }
+        }).collect();
+        queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: &tex_a,
+                mip_level: 0,
+                aspect: wgpu::TextureAspect::All,
+                origin: wgpu::Origin3d::ZERO,
+            },
+            &initial_state,
+            wgpu::ImageDataLayout {
+                rows_per_image: Some(height),
+                bytes_per_row: Some(width),
+                offset: 0,
+            },
+            descriptor.size,
+        );
 
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("Game of Life Sampler"),
@@ -117,6 +147,8 @@ impl GameOfLife {
             read_from_a: true,
             pipeline,
             bind_group_layout,
+            interval,
+            last_update: std::time::Instant::now(),
         }
     }
 
@@ -135,6 +167,10 @@ impl GameOfLife {
         } else {
             &self.tex_a_view
         };
+        if self.last_update.elapsed() < self.interval {
+            return read_from_view;
+        }
+        self.last_update = std::time::Instant::now();
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             entries: &[
                 wgpu::BindGroupEntry {
