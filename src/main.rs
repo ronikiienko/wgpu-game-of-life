@@ -1,4 +1,5 @@
 mod game_of_life;
+mod perf_monitor;
 
 use std::time::Duration;
 use crate::game_of_life::GameOfLife;
@@ -8,6 +9,7 @@ use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowBuilder};
+use crate::perf_monitor::PerfMonitor;
 
 pub struct CameraController {
     speed: f32,
@@ -169,6 +171,7 @@ struct State<'a> {
     bind_group_layout: wgpu::BindGroupLayout,
     camera_buffer: wgpu::Buffer,
     game_of_life: GameOfLife,
+    perf_monitor: PerfMonitor
 }
 impl<'a> State<'a> {
     pub async fn new(window: &'a Window) -> Self {
@@ -303,7 +306,10 @@ impl<'a> State<'a> {
             },
         });
 
-        let game_of_life = GameOfLife::new(&device, &queue, 30000, 30000, Duration::from_millis(40));
+        let game_of_life = GameOfLife::new(&device, &queue, 300, 300, Duration::from_millis(40));
+
+        let mut perf_monitor = PerfMonitor::new();
+        perf_monitor.start("update");
 
         Self {
             surface,
@@ -319,6 +325,7 @@ impl<'a> State<'a> {
             bind_group_layout,
             camera_buffer,
             game_of_life,
+            perf_monitor
         }
     }
 
@@ -348,6 +355,11 @@ impl<'a> State<'a> {
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+        let updated_summary = self.perf_monitor.start_frame();
+        if updated_summary {
+            println!("{}", self.perf_monitor.get_summary());
+        }
+
         let output = self.surface.get_current_texture()?;
         let view = output
             .texture
