@@ -1,5 +1,6 @@
 mod game_of_life_frag;
 mod perf_monitor;
+mod game_of_life_compute;
 
 use std::time::Duration;
 use crate::game_of_life_frag::GameOfLifeFrag;
@@ -9,6 +10,7 @@ use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowBuilder};
+use crate::game_of_life_compute::GameOfLifeCompute;
 use crate::perf_monitor::PerfMonitor;
 
 pub struct CameraController {
@@ -170,7 +172,8 @@ struct State<'a> {
     camera_uniform: CameraUniform,
     bind_group_layout: wgpu::BindGroupLayout,
     camera_buffer: wgpu::Buffer,
-    game_of_life: GameOfLifeFrag,
+    game_of_life_frag: GameOfLifeFrag,
+    game_of_life_compute: GameOfLifeCompute,
     perf_monitor: PerfMonitor
 }
 impl<'a> State<'a> {
@@ -307,7 +310,8 @@ impl<'a> State<'a> {
             },
         });
 
-        let game_of_life = GameOfLifeFrag::new(&device, &queue, 25000, 25000, Duration::from_millis(0));
+        let game_of_life_compute = GameOfLifeCompute::new(&device, &queue, 80, 80, Duration::from_millis(0));
+        let game_of_life_frag = GameOfLifeFrag::new(&device, &queue, 25000, 25000, Duration::from_millis(0));
 
         let mut perf_monitor = PerfMonitor::new();
         perf_monitor.start("update");
@@ -325,7 +329,8 @@ impl<'a> State<'a> {
             camera_uniform,
             bind_group_layout,
             camera_buffer,
-            game_of_life,
+            game_of_life_compute,
+            game_of_life_frag,
             perf_monitor
         }
     }
@@ -369,7 +374,7 @@ impl<'a> State<'a> {
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        let source = self.game_of_life.update(&self.device, &mut encoder);
+        let source = self.game_of_life_frag.update(&self.device, &mut encoder);
 
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             entries: &[
