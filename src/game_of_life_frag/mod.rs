@@ -9,6 +9,8 @@ pub struct GameOfLifeFrag {
     read_from_a: bool,
     pipeline: wgpu::RenderPipeline,
     bind_group_layout: wgpu::BindGroupLayout,
+    last_update: std::time::Instant,
+    interval: Duration,
 }
 impl GameOfLifeFrag {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, width: u32, height: u32, interval: Duration) -> Self {
@@ -127,6 +129,8 @@ impl GameOfLifeFrag {
             read_from_a: true,
             pipeline,
             bind_group_layout,
+            interval,
+            last_update: std::time::Instant::now(),
         }
     }
 
