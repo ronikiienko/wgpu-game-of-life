@@ -312,7 +312,7 @@ impl<'a> State<'a> {
             },
         });
 
-        let game_size = 25000;
+        let game_size = 250;
         let game_of_life = GameOfLifeFrag::new(&device, game_size, game_size);
         let state: Vec<u8> = (0..game_size * game_size).map(|i| {
             if i < game_size * game_size / 2 {
@@ -370,7 +370,7 @@ impl<'a> State<'a> {
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: None,
         });
-        self.game_of_life.update(&self.device, &mut encoder);
+        self.game_of_life.update(&self.device, &self.queue);
         self.queue.submit(Some(encoder.finish()));
     }
 

@@ -138,12 +138,19 @@ impl GameOfLifeFrag {
     /// One texture is currently read from, while the other is written to.
     /// This function alternates between the two textures. You should update view that is used for rendering after each update.
     /// This is view to texture that uses R8Uint format, where 1 means alive and 0 means dead for each cell.
+    /// You can bind it as texture_2d<u32> and use textureLoad() in the shader. Texture load will require coordinates in pixels,
+    /// so you can use get_size() to get the size of the texture. And then multiply it by uv coordinates to get the pixel coordinates.
     pub fn get_current_view(&self) -> &wgpu::TextureView {
         self.get_read_view()
     }
 
-    /// This function should not be called multiple times before passed encoder is submitted.
-    pub fn update(&mut self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder) {
+    /// I would like to make this function accept encoder, but this gives room for bugs.
+    /// For example, if user calls update() multiple times before submitting the encoder, the state of the simulation will be wrong/some updates will be lost
+    pub fn update(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Game of Life Encoder"),
+        });
+
         let read_from_view = self.get_read_view();
         let write_to_view = self.get_write_view();
 
@@ -176,6 +183,8 @@ impl GameOfLifeFrag {
             render_pass.draw(0..6, 0..1);
         }
         self.read_from_a = !self.read_from_a;
+
+        queue.submit(Some(encoder.finish()));
     }
 
     pub fn get_size(&self) -> (u32, u32) {
