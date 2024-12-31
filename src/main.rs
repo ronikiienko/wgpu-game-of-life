@@ -1,4 +1,3 @@
-mod game_of_life_compute;
 mod game_of_life_frag;
 mod patterns;
 mod perf_monitor;
@@ -313,23 +312,23 @@ impl<'a> State<'a> {
             },
         });
 
-        let game_size = 256 * 5;
+        let game_size = 256 * 100;
         let game_of_life = GameOfLifeFrag::new(&device, game_size, game_size);
-        // let state: Vec<u8> = (0..game_size * game_size).map(|_| {
-        //     if rand::random() {
-        //         1
-        //     } else {
-        //         0
-        //     }
-        // }).collect();
-        // game_of_life.write_area(&queue, &state, 0, 0, game_size, game_size);
+        let state: Vec<u8> = (0..game_size * game_size).map(|_| {
+            if rand::random() {
+                1
+            } else {
+                0
+            }
+        }).collect();
+        game_of_life.write_area(&queue, &state, 0, 0, game_size, game_size);
         // let part = game_of_life.read_area(&device, &queue, 0, 0, 256 * 2, 256 * 2).await;
         // game_of_life.write_area(&queue, &part, 0, 0, 256 * 2, 256 * 2);
-        let p_1 = get_heavy_weight_spaceship();
-        game_of_life.write_area(&queue, &p_1.data, 0, 0, p_1.width, p_1.height);
-        let part = game_of_life.read_area(&device, &queue, 0, 0, 256, 256).await;
-        game_of_life.write_area(&queue, &[0; 256 * 256], 0, 0, 256, 256);
-        game_of_life.write_area(&queue, &part, 256, 256, 256, 256);
+        // let p_1 = get_heavy_weight_spaceship();
+        // game_of_life.write_area(&queue, &p_1.data, 0, 0, p_1.width, p_1.height);
+        // let part = game_of_life.read_area(&device, &queue, 0, 0, 256, 256).await;
+        // game_of_life.write_area(&queue, &[0; 256 * 256], 0, 0, 256, 256);
+        // game_of_life.write_area(&queue, &part, 256, 256, 256, 256);
 
 
 
