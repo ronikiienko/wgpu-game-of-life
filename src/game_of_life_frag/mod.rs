@@ -8,11 +8,9 @@ pub struct GameOfLifeFrag {
     read_from_a: bool,
     pipeline: wgpu::RenderPipeline,
     bind_group_layout: wgpu::BindGroupLayout,
-    last_update: std::time::Instant,
-    interval: Duration,
 }
 impl GameOfLifeFrag {
-    pub fn new(device: &wgpu::Device, width: u32, height: u32, interval: Duration) -> Self {
+    pub fn new(device: &wgpu::Device, width: u32, height: u32) -> Self {
         let texture_format = wgpu::TextureFormat::R8Uint;
         let descriptor = wgpu::TextureDescriptor {
             size: wgpu::Extent3d {
@@ -104,8 +102,6 @@ impl GameOfLifeFrag {
             read_from_a: true,
             pipeline,
             bind_group_layout,
-            interval,
-            last_update: std::time::Instant::now(),
         }
     }
 
@@ -148,10 +144,6 @@ impl GameOfLifeFrag {
 
     /// This function should not be called multiple times before passed encoder is submitted.
     pub fn update(&mut self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder) {
-        if self.last_update.elapsed() < self.interval {
-            return;
-        }
-        self.last_update = std::time::Instant::now();
         let read_from_view = self.get_read_view();
         let write_to_view = self.get_write_view();
 
