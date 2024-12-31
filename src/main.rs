@@ -1,18 +1,21 @@
-mod game_of_life_frag;
-mod perf_monitor;
 mod game_of_life_compute;
+mod game_of_life_frag;
 mod patterns;
+mod perf_monitor;
 
-use std::time::Duration;
 use crate::game_of_life_frag::GameOfLifeFrag;
+use crate::patterns::{
+    get_blinker, get_heavy_weight_spaceship, get_light_weight_spaceship, get_loaf,
+    get_middle_weight_spaceship, get_penta_decathlon, get_toad,
+};
+use crate::perf_monitor::PerfMonitor;
 use glam::{vec2, Mat3, Mat4, Vec2};
+use std::time::Duration;
 use wgpu::util::DeviceExt;
 use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowBuilder};
-use crate::patterns::{get_blinker, get_heavy_weight_spaceship, get_light_weight_spaceship, get_loaf, get_middle_weight_spaceship, get_penta_decathlon, get_toad};
-use crate::perf_monitor::PerfMonitor;
 
 pub struct CameraController {
     speed: f32,
@@ -37,11 +40,11 @@ impl CameraController {
         match event {
             WindowEvent::KeyboardInput {
                 event:
-                KeyEvent {
-                    state,
-                    physical_key: PhysicalKey::Code(keycode),
-                    ..
-                },
+                    KeyEvent {
+                        state,
+                        physical_key: PhysicalKey::Code(keycode),
+                        ..
+                    },
                 ..
             } => {
                 let pressed = *state == ElementState::Pressed;
@@ -113,7 +116,7 @@ impl Camera {
             self.rotation,
             self.position,
         )
-            .inverse();
+        .inverse();
         let projection = Mat3::from_scale(vec2(1.0 / self.aspect_ratio, 1.0));
         projection * view
     }
@@ -174,7 +177,7 @@ struct State<'a> {
     bind_group_layout: wgpu::BindGroupLayout,
     camera_buffer: wgpu::Buffer,
     game_of_life: GameOfLifeFrag,
-    perf_monitor: PerfMonitor
+    perf_monitor: PerfMonitor,
 }
 impl<'a> State<'a> {
     pub async fn new(window: &'a Window) -> Self {
@@ -310,15 +313,16 @@ impl<'a> State<'a> {
             },
         });
 
-        let game_of_life = GameOfLifeFrag::new(&device, &queue, 3000, 3000, Duration::from_millis(0));
+        let game_size = 256 * 5;
+        let game_of_life = GameOfLifeFrag::new(&device, game_size, game_size, Duration::from_millis(0));
         let p_1 = get_heavy_weight_spaceship();
         let p_2 = get_light_weight_spaceship();
         let p_3 = get_middle_weight_spaceship();
         let p_4 = get_penta_decathlon();
-        game_of_life.load_area(&queue, &p_1.data, 10, 10, p_1.width, p_1.height);
-        game_of_life.load_area(&queue, &p_2.data, 20, 20, p_2.width, p_2.height);
-        game_of_life.load_area(&queue, &p_3.data, 30, 30, p_3.width, p_3.height);
-        game_of_life.load_area(&queue, &p_4.data, 50, 50, p_4.width, p_4.height);
+        game_of_life.write_area(&queue, &p_1.data, 10, 10, p_1.width, p_1.height);
+        game_of_life.write_area(&queue, &p_2.data, 20, 20, p_2.width, p_2.height);
+        game_of_life.write_area(&queue, &p_3.data, 30, 30, p_3.width, p_3.height);
+        game_of_life.write_area(&queue, &p_4.data, 50, 50, p_4.width, p_4.height);
 
 
         let mut perf_monitor = PerfMonitor::new();
@@ -394,7 +398,9 @@ impl<'a> State<'a> {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::TextureView(self.game_of_life.get_current_view()),
+                    resource: wgpu::BindingResource::TextureView(
+                        self.game_of_life.get_current_view(),
+                    ),
                 },
             ],
             label: None,
@@ -447,11 +453,11 @@ async fn run() {
                             WindowEvent::CloseRequested
                             | WindowEvent::KeyboardInput {
                                 event:
-                                KeyEvent {
-                                    state: ElementState::Pressed,
-                                    physical_key: PhysicalKey::Code(KeyCode::Escape),
-                                    ..
-                                },
+                                    KeyEvent {
+                                        state: ElementState::Pressed,
+                                        physical_key: PhysicalKey::Code(KeyCode::Escape),
+                                        ..
+                                    },
                                 ..
                             } => control_flow.exit(),
                             WindowEvent::Resized(physical_size) => {

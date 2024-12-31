@@ -1,4 +1,3 @@
-use rand::Rng;
 use std::time::Duration;
 
 pub struct GameOfLifeFrag {
@@ -13,13 +12,7 @@ pub struct GameOfLifeFrag {
     interval: Duration,
 }
 impl GameOfLifeFrag {
-    pub fn new(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        width: u32,
-        height: u32,
-        interval: Duration,
-    ) -> Self {
+    pub fn new(device: &wgpu::Device, width: u32, height: u32, interval: Duration) -> Self {
         let texture_format = wgpu::TextureFormat::R8Uint;
         let descriptor = wgpu::TextureDescriptor {
             size: wgpu::Extent3d {
@@ -30,7 +23,8 @@ impl GameOfLifeFrag {
             label: None,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT
                 | wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_DST,
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::COPY_SRC,
             format: texture_format,
             dimension: wgpu::TextureDimension::D2,
             mip_level_count: 1,
@@ -197,7 +191,7 @@ impl GameOfLifeFrag {
     }
 
     /// This method should NOT be called after update() is called and before passed encoder is submitted.
-    pub fn load_area(
+    pub fn write_area(
         &self,
         queue: &wgpu::Queue,
         data: &[u8],
@@ -228,5 +222,76 @@ impl GameOfLifeFrag {
                 depth_or_array_layers: 1,
             },
         )
+    }
+
+    pub async fn read_area(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+    ) -> Vec<u8> {
+        if width % wgpu::COPY_BYTES_PER_ROW_ALIGNMENT != 0 {
+            panic!(
+                "Width must be a multiple of {}",
+                wgpu::COPY_BYTES_PER_ROW_ALIGNMENT
+            );
+        }
+
+        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Read Area Buffer"),
+            size: (width * height) as wgpu::BufferAddress,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Read Area Encoder"),
+        });
+
+        encoder.copy_texture_to_buffer(
+            wgpu::ImageCopyTexture {
+                texture: self.get_read_texture(),
+                origin: wgpu::Origin3d { x, y, z: 0 },
+                aspect: wgpu::TextureAspect::All,
+                mip_level: 0,
+            },
+            wgpu::ImageCopyBuffer {
+                layout: wgpu::ImageDataLayout {
+                    bytes_per_row: Some(width),
+                    rows_per_image: Some(height),
+                    offset: 0,
+                },
+                buffer: &buffer,
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        );
+
+        queue.submit(Some(encoder.finish()));
+
+        let mut vec: Vec<u8>;
+
+        {
+            let buffer_slice = buffer.slice(..);
+
+            let (sender, receiver) = futures_intrusive::channel::shared::oneshot_channel();
+            buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+                sender.send(result).unwrap()
+            });
+            device.poll(wgpu::Maintain::Wait);
+            receiver.receive().await.unwrap().unwrap();
+
+            let data = buffer_slice.get_mapped_range();
+
+            vec = data.to_vec();
+        }
+
+        vec
     }
 }
