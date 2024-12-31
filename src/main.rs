@@ -203,7 +203,7 @@ impl<'a> State<'a> {
                     required_features: wgpu::Features::empty(),
                     memory_hints: Default::default(),
                     required_limits: wgpu::Limits {
-                        max_texture_dimension_2d: 16384,
+                        max_texture_dimension_2d: 16384 * 2,
                         ..Default::default()
                     },
                 },
@@ -312,13 +312,13 @@ impl<'a> State<'a> {
             },
         });
 
-        let game_size = 16384;
+        let game_size = 25000;
         let game_of_life = GameOfLifeFrag::new(&device, game_size, game_size);
-        let state: Vec<u8> = (0..game_size * game_size).map(|_| {
-            if rand::random() {
-                1
-            } else {
+        let state: Vec<u8> = (0..game_size * game_size).map(|i| {
+            if i < game_size * game_size / 2 {
                 0
+            } else {
+                1
             }
         }).collect();
         game_of_life.write_area(&queue, &state, 0, 0, game_size, game_size);
