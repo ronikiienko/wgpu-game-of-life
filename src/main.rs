@@ -1,6 +1,7 @@
 mod game_of_life_frag;
 mod perf_monitor;
 mod game_of_life_compute;
+mod patterns;
 
 use std::time::Duration;
 use crate::game_of_life_frag::GameOfLifeFrag;
@@ -10,6 +11,7 @@ use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowBuilder};
+use crate::patterns::{get_blinker, get_heavy_weight_spaceship, get_light_weight_spaceship, get_loaf, get_middle_weight_spaceship, get_penta_decathlon, get_toad};
 use crate::perf_monitor::PerfMonitor;
 
 pub struct CameraController {
@@ -308,7 +310,16 @@ impl<'a> State<'a> {
             },
         });
 
-        let game_of_life = GameOfLifeFrag::new(&device, &queue, 25000, 25000, Duration::from_millis(0));
+        let game_of_life = GameOfLifeFrag::new(&device, &queue, 3000, 3000, Duration::from_millis(0));
+        let p_1 = get_heavy_weight_spaceship();
+        let p_2 = get_light_weight_spaceship();
+        let p_3 = get_middle_weight_spaceship();
+        let p_4 = get_penta_decathlon();
+        game_of_life.load_area(&queue, &p_1.data, 10, 10, p_1.width, p_1.height);
+        game_of_life.load_area(&queue, &p_2.data, 20, 20, p_2.width, p_2.height);
+        game_of_life.load_area(&queue, &p_3.data, 30, 30, p_3.width, p_3.height);
+        game_of_life.load_area(&queue, &p_4.data, 50, 50, p_4.width, p_4.height);
+
 
         let mut perf_monitor = PerfMonitor::new();
         perf_monitor.start("update");

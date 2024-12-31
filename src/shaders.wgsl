@@ -38,7 +38,8 @@ fn vs_main(input: VertexInput) -> VertexOutput {
     let position = view_proj * vec3<f32>(pos, 1.0);
     var out: VertexOutput;
     out.clip_position = vec4<f32>(position, 1.0);
-    out.uv = pos * 0.5 + 0.5;
+    let uv_flipped = pos * 0.5 + 0.5;
+    out.uv = vec2(uv_flipped.x, 1.0 - uv_flipped.y);
     return out;
 }
 
