@@ -98,7 +98,7 @@ impl CameraController {
             movement.x += 1.0;
         }
         camera.zoom *= 1.0 - self.wheel * 0.04;
-        camera.zoom = camera.zoom.clamp(0.01, 10.0);
+        camera.zoom = camera.zoom.clamp(0.1, 100.0);
         camera.position += movement.normalize_or_zero() * self.speed * camera.zoom;
         self.wheel = 0.0;
     }
@@ -207,7 +207,7 @@ impl<'a> State<'a> {
         let camera_controller = CameraController::new(0.05);
 
 
-        let game_width = 250;
+        let game_width = 2500;
         let game_height = 2500;
         let game_of_life = GameOfLife::new(&device, game_width, game_height);
         let state: Vec<u8> = (0..game_width * game_height).map(|i| {
@@ -277,6 +277,11 @@ impl<'a> State<'a> {
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
+        let baseline_size = 500;
+        let gol_size_tuple = self.game_of_life.get_size();
+        let gol_size = vec2(gol_size_tuple.0 as f32, gol_size_tuple.1 as f32);
+        let scale = vec2(gol_size.x / baseline_size as f32, gol_size.y / baseline_size as f32);
+
         self.gol_renderer.rerender(
             &self.device,
             &self.queue,
@@ -284,7 +289,7 @@ impl<'a> State<'a> {
             &self.game_of_life,
             &view,
             self.camera.get_matrix(),
-            Mat3::IDENTITY,
+            Mat3::from_scale(scale),
         );
 
         self.queue.submit(Some(encoder.finish()));
