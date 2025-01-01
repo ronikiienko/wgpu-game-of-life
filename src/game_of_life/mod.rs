@@ -1,6 +1,4 @@
-use std::time::Duration;
-
-pub struct GameOfLifeFrag {
+pub struct GameOfLife {
     tex_a: wgpu::Texture,
     tex_b: wgpu::Texture,
     tex_a_view: wgpu::TextureView,
@@ -9,7 +7,7 @@ pub struct GameOfLifeFrag {
     pipeline: wgpu::RenderPipeline,
     bind_group_layout: wgpu::BindGroupLayout,
 }
-impl GameOfLifeFrag {
+impl GameOfLife {
     pub fn new(device: &wgpu::Device, width: u32, height: u32) -> Self {
         let texture_format = wgpu::TextureFormat::R8Uint;
         let descriptor = wgpu::TextureDescriptor {

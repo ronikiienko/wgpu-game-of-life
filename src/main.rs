@@ -1,8 +1,8 @@
-mod game_of_life_frag;
+mod game_of_life;
 mod patterns;
 mod perf_monitor;
 
-use crate::game_of_life_frag::GameOfLifeFrag;
+use crate::game_of_life::GameOfLife;
 use crate::patterns::{
     get_blinker, get_heavy_weight_spaceship, get_light_weight_spaceship, get_loaf,
     get_middle_weight_spaceship, get_penta_decathlon, get_toad,
@@ -175,7 +175,7 @@ struct State<'a> {
     camera_uniform: CameraUniform,
     bind_group_layout: wgpu::BindGroupLayout,
     camera_buffer: wgpu::Buffer,
-    game_of_life: GameOfLifeFrag,
+    game_of_life: GameOfLife,
     perf_monitor: PerfMonitor,
 }
 impl<'a> State<'a> {
@@ -313,7 +313,7 @@ impl<'a> State<'a> {
         });
 
         let game_size = 250;
-        let game_of_life = GameOfLifeFrag::new(&device, game_size, game_size);
+        let game_of_life = GameOfLife::new(&device, game_size, game_size);
         let state: Vec<u8> = (0..game_size * game_size).map(|i| {
             if i < game_size * game_size / 2 {
                 0
