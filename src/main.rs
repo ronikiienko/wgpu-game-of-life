@@ -1,7 +1,7 @@
 mod game_of_life;
 mod patterns;
 mod perf_monitor;
-mod renderer;
+mod gol_renderer;
 
 use crate::game_of_life::GameOfLife;
 use crate::patterns::{
@@ -16,7 +16,7 @@ use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowBuilder};
-use crate::renderer::GoLRenderer;
+use crate::gol_renderer::GoLRenderer;
 
 pub struct CameraController {
     speed: f32,
