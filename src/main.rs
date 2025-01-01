@@ -133,31 +133,31 @@ impl Camera {
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct CameraUniform {
-    mat_0: [f32; 3],
-    _pad_0: f32,
-    mat_1: [f32; 3],
-    _pad_1: f32,
-    mat_2: [f32; 3],
+    view_proj: [[f32; 4]; 4],
     aspect: f32,
+    pad_0: f32,
+    pad_1: f32,
+    pad_2: f32,
 }
 
 impl CameraUniform {
     fn new(camera: &Camera) -> Self {
-        let cols = camera.get_matrix().to_cols_array_2d();
+        let matrix = camera.get_matrix();
+        let matrix_4 = Mat4::from_mat3(matrix);
+        let cols = matrix_4.to_cols_array_2d();
         Self {
-            mat_0: cols[0],
-            _pad_0: 0.0,
-            mat_1: cols[1],
-            _pad_1: 0.0,
-            mat_2: cols[2],
+            view_proj: cols,
             aspect: camera.aspect_ratio,
+            pad_0: 0.0,
+            pad_1: 0.0,
+            pad_2: 0.0,
         }
     }
     fn update(&mut self, camera: &Camera) {
-        let cols = camera.get_matrix().to_cols_array_2d();
-        self.mat_0 = cols[0];
-        self.mat_1 = cols[1];
-        self.mat_2 = cols[2];
+        let matrix = camera.get_matrix();
+        let matrix_4 = Mat4::from_mat3(matrix);
+        let cols = matrix_4.to_cols_array_2d();
+        self.view_proj = cols;
         self.aspect = camera.aspect_ratio;
     }
 }

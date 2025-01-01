@@ -1,8 +1,5 @@
 struct CameraUniform {
-    mat_0: vec3<f32>,
-    mat_1: vec3<f32>,
-    _pad_1: f32,
-    mat_2: vec3<f32>,
+    view_proj: mat4x4<f32>,
     aspect: f32,
 }
 @group(0) @binding(0)
@@ -29,17 +26,14 @@ const full_quad: array<vec2<f32>, 6> = array<vec2<f32>, 6>(
 
 @vertex
 fn vs_main(input: VertexInput) -> VertexOutput {
-    let pos = full_quad[input.vertex_index];
-    let view_proj = mat3x3<f32>(
-        camera.mat_0,
-        camera.mat_1,
-        camera.mat_2,
-    );
-    let position = view_proj * vec3<f32>(pos, 1.0);
     var out: VertexOutput;
-    out.clip_position = vec4<f32>(position, 1.0);
+
+    let pos = full_quad[input.vertex_index];
+    out.clip_position = camera.view_proj * vec4<f32>(pos, 1.0, 1.0);
+
     let uv_flipped = pos * 0.5 + 0.5;
     out.uv = vec2(uv_flipped.x, 1.0 - uv_flipped.y);
+
     return out;
 }
 
