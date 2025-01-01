@@ -1,6 +1,7 @@
 mod game_of_life;
 mod patterns;
 mod perf_monitor;
+mod renderer;
 
 use crate::game_of_life::GameOfLife;
 use crate::patterns::{

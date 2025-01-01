@@ -134,7 +134,7 @@ impl GameOfLife {
 
     /// Internally, the game of life simulation uses two textures to store the state of the cells.
     /// One texture is currently read from, while the other is written to.
-    /// This function alternates between the two textures. You should update view that is used for rendering after each update.
+    /// This function alternates between the two textures. You should update view that is used for renderer after each update.
     /// This is view to texture that uses R8Uint format, where 1 means alive and 0 means dead for each cell.
     /// You can bind it as texture_2d<u32> and use textureLoad() in the shader. Texture load will require coordinates in pixels,
     /// so you can use get_size() to get the size of the texture. And then multiply it by uv coordinates to get the pixel coordinates.
