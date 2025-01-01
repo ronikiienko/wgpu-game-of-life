@@ -16,6 +16,7 @@ use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowBuilder};
+use crate::renderer::Renderer;
 
 pub struct CameraController {
     speed: f32,
@@ -131,37 +132,7 @@ impl Camera {
     }
 }
 
-#[repr(C)]
-#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct CameraUniform {
-    view_proj: [[f32; 4]; 4],
-    aspect: f32,
-    pad_0: f32,
-    pad_1: f32,
-    pad_2: f32,
-}
 
-impl CameraUniform {
-    fn new(camera: &Camera) -> Self {
-        let matrix = camera.get_matrix();
-        let matrix_4 = Mat4::from_mat3(matrix);
-        let cols = matrix_4.to_cols_array_2d();
-        Self {
-            view_proj: cols,
-            aspect: camera.aspect_ratio,
-            pad_0: 0.0,
-            pad_1: 0.0,
-            pad_2: 0.0,
-        }
-    }
-    fn update(&mut self, camera: &Camera) {
-        let matrix = camera.get_matrix();
-        let matrix_4 = Mat4::from_mat3(matrix);
-        let cols = matrix_4.to_cols_array_2d();
-        self.view_proj = cols;
-        self.aspect = camera.aspect_ratio;
-    }
-}
 
 struct State<'a> {
     window: &'a Window,
@@ -170,14 +141,11 @@ struct State<'a> {
     surface: wgpu::Surface<'a>,
     surface_config: wgpu::SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
-    pipeline: wgpu::RenderPipeline,
     camera: Camera,
     camera_controller: CameraController,
-    camera_uniform: CameraUniform,
-    bind_group_layout: wgpu::BindGroupLayout,
-    camera_buffer: wgpu::Buffer,
     game_of_life: GameOfLife,
     perf_monitor: PerfMonitor,
+    renderer: Renderer
 }
 impl<'a> State<'a> {
     pub async fn new(window: &'a Window) -> Self {
@@ -237,81 +205,7 @@ impl<'a> State<'a> {
 
         let mut camera = Camera::new(size.width as f32 / size.height as f32);
         let camera_controller = CameraController::new(0.05);
-        let camera_uniform = CameraUniform::new(&camera);
-        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: None,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            contents: bytemuck::cast_slice(&[camera_uniform]),
-        });
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: None,
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        min_binding_size: None,
-                        has_dynamic_offset: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    ty: wgpu::BindingType::Texture {
-                        multisampled: false,
-                        sample_type: wgpu::TextureSampleType::Uint,
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                    },
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    count: None,
-                },
-            ],
-        });
 
-        let shader_module = device.create_shader_module(wgpu::include_wgsl!("shaders.wgsl"));
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: None,
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
-        });
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: None,
-            multiview: None,
-            fragment: Some(wgpu::FragmentState {
-                module: &shader_module,
-                entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: surface_config.format,
-                    write_mask: wgpu::ColorWrites::ALL,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                })],
-            }),
-            layout: Some(&pipeline_layout),
-            cache: None,
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            primitive: wgpu::PrimitiveState {
-                conservative: false,
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                polygon_mode: wgpu::PolygonMode::Fill,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                unclipped_depth: false,
-            },
-            vertex: wgpu::VertexState {
-                compilation_options: Default::default(),
-                entry_point: Some("vs_main"),
-                module: &shader_module,
-                buffers: &[],
-            },
-        });
 
         let game_size = 250;
         let game_of_life = GameOfLife::new(&device, game_size, game_size);
@@ -327,6 +221,8 @@ impl<'a> State<'a> {
         let mut perf_monitor = PerfMonitor::new();
         perf_monitor.start("update");
 
+        let renderer = Renderer::new(&device, surface_format);
+
         Self {
             surface,
             surface_config,
@@ -334,14 +230,11 @@ impl<'a> State<'a> {
             device,
             window,
             size,
-            pipeline,
             camera,
             camera_controller,
-            camera_uniform,
-            bind_group_layout,
-            camera_buffer,
             game_of_life,
-            perf_monitor
+            perf_monitor,
+            renderer
         }
     }
 
@@ -362,12 +255,6 @@ impl<'a> State<'a> {
 
     pub fn update(&mut self) {
         self.camera_controller.update_camera(&mut self.camera);
-        self.camera_uniform.update(&self.camera);
-        self.queue.write_buffer(
-            &self.camera_buffer,
-            0,
-            bytemuck::cast_slice(&[self.camera_uniform]),
-        );
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: None,
         });
@@ -389,42 +276,15 @@ impl<'a> State<'a> {
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: self.camera_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(
-                        self.game_of_life.get_current_view(),
-                    ),
-                },
-            ],
-            label: None,
-            layout: &self.bind_group_layout,
-        });
-
-        {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: None,
-                timestamp_writes: None,
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                        store: wgpu::StoreOp::Store,
-                    },
-                    resolve_target: None,
-                })],
-                depth_stencil_attachment: None,
-                occlusion_query_set: None,
-            });
-            render_pass.set_pipeline(&self.pipeline);
-            render_pass.set_bind_group(0, Some(&bind_group), &[]);
-            render_pass.draw(0..6, 0..1);
-        }
+        self.renderer.rerender(
+            &self.device,
+            &self.queue,
+            &mut encoder,
+            &self.game_of_life,
+            &view,
+            self.camera.get_matrix(),
+            Mat3::IDENTITY,
+        );
 
         self.queue.submit(Some(encoder.finish()));
         output.present();
