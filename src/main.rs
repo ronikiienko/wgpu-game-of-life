@@ -16,7 +16,7 @@ use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowBuilder};
-use crate::renderer::Renderer;
+use crate::renderer::GoLRenderer;
 
 pub struct CameraController {
     speed: f32,
@@ -145,7 +145,7 @@ struct State<'a> {
     camera_controller: CameraController,
     game_of_life: GameOfLife,
     perf_monitor: PerfMonitor,
-    renderer: Renderer
+    gol_renderer: GoLRenderer
 }
 impl<'a> State<'a> {
     pub async fn new(window: &'a Window) -> Self {
@@ -207,21 +207,22 @@ impl<'a> State<'a> {
         let camera_controller = CameraController::new(0.05);
 
 
-        let game_size = 250;
-        let game_of_life = GameOfLife::new(&device, game_size, game_size);
-        let state: Vec<u8> = (0..game_size * game_size).map(|i| {
-            if i < game_size * game_size / 2 {
+        let game_width = 250;
+        let game_height = 2500;
+        let game_of_life = GameOfLife::new(&device, game_width, game_height);
+        let state: Vec<u8> = (0..game_width * game_height).map(|i| {
+            if i < game_width * game_height / 2 {
                 0
             } else {
                 1
             }
         }).collect();
-        game_of_life.write_area(&queue, &state, 0, 0, game_size, game_size);
+        game_of_life.write_area(&queue, &state, 0, 0, game_width, game_height);
 
         let mut perf_monitor = PerfMonitor::new();
         perf_monitor.start("update");
 
-        let renderer = Renderer::new(&device, surface_format);
+        let gol_renderer = GoLRenderer::new(&device, surface_format);
 
         Self {
             surface,
@@ -234,7 +235,7 @@ impl<'a> State<'a> {
             camera_controller,
             game_of_life,
             perf_monitor,
-            renderer
+            gol_renderer
         }
     }
 
@@ -276,7 +277,7 @@ impl<'a> State<'a> {
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        self.renderer.rerender(
+        self.gol_renderer.rerender(
             &self.device,
             &self.queue,
             &mut encoder,

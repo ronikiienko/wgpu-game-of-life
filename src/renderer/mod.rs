@@ -22,14 +22,14 @@ impl Uniform {
     }
 }
 
-pub struct Renderer {
+pub struct GoLRenderer {
     bind_group_layout: wgpu::BindGroupLayout,
     pipeline: wgpu::RenderPipeline,
     uniform_buffer: wgpu::Buffer,
     uniform: Uniform,
 }
 
-impl Renderer {
+impl GoLRenderer {
     pub fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
