@@ -16,7 +16,9 @@ use camera::{Camera, CameraController};
 use egui_wgpu::wgpu;
 use glam::{vec2, Mat3, Mat4, Vec2};
 use std::sync::Arc;
+use std::task::Context;
 use std::time::Duration;
+use egui::Align2;
 use wgpu::util::DeviceExt;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
@@ -37,7 +39,7 @@ struct State {
     game_of_life: GameOfLife,
     perf_monitor: PerfMonitor,
     gol_renderer: GoLRenderer,
-    // gui_renderer: EguiRenderer,
+    gui_renderer: EguiRenderer,
 }
 impl State {
     pub async fn new(window: Arc<winit::window::Window>) -> Self {
@@ -130,7 +132,7 @@ impl State {
             game_of_life,
             perf_monitor,
             gol_renderer,
-            // gui_renderer,
+            gui_renderer,
         }
     }
 
@@ -146,7 +148,9 @@ impl State {
     }
 
     pub fn input(&mut self, event: &WindowEvent) -> bool {
-        self.camera_controller.process_events(event)
+        self.camera_controller.process_events(event);
+        self.gui_renderer.handle_input(&self.window, event);
+        false
     }
 
     pub fn update(&mut self) {
@@ -188,6 +192,39 @@ impl State {
             &view,
             self.camera.get_matrix(),
             Mat3::from_scale(scale),
+        );
+
+        self.gui_renderer.draw(
+            &self.device,
+            &self.queue,
+            &mut encoder,
+            &self.window,
+            &view,
+            egui_wgpu::ScreenDescriptor {
+                size_in_pixels: [self.size.width, self.size.height],
+                pixels_per_point: self.window.scale_factor() as f32
+            },
+            |ui| {
+                egui::Window::new("Streamline CFD")
+                    // .vscroll(true)
+                    .default_open(true)
+                    .max_width(1000.0)
+                    .max_height(800.0)
+                    .default_width(800.0)
+                    .resizable(true)
+                    .anchor(Align2::LEFT_TOP, [0.0, 0.0])
+                    .show(&ui, |mut ui| {
+                        if ui.add(egui::Button::new("Click me")).clicked() {
+                            println!("PRESSED")
+                        }
+
+                        ui.label("Slider");
+                        // ui.add(egui::Slider::new(_, 0..=120).text("age"));
+                        ui.end_row();
+
+                        // proto_scene.egui(ui);
+                    });
+            }
         );
 
         self.queue.submit(Some(encoder.finish()));
