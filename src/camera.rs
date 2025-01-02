@@ -22,7 +22,7 @@ impl CameraController {
             wheel: 0.0,
         }
     }
-    pub fn process_events(&mut self, event: &WindowEvent) -> bool {
+    pub fn handle_input(&mut self, event: &WindowEvent) -> bool {
         match event {
             WindowEvent::KeyboardInput {
                 event:

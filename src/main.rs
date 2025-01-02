@@ -7,25 +7,44 @@ mod perf_monitor;
 
 use crate::gol::GoL;
 use crate::gol_renderer::GoLRenderer;
+use crate::gui::EguiRenderer;
 use crate::patterns::{
     get_blinker, get_heavy_weight_spaceship, get_light_weight_spaceship, get_loaf,
     get_middle_weight_spaceship, get_penta_decathlon, get_toad,
 };
 use crate::perf_monitor::PerfMonitor;
 use camera::{Camera, CameraController};
+use egui::Align2;
 use egui_wgpu::wgpu;
 use glam::{vec2, Mat3, Mat4, Vec2};
 use std::sync::Arc;
 use std::task::Context;
 use std::time::Duration;
-use egui::Align2;
 use wgpu::util::DeviceExt;
 use winit::application::ApplicationHandler;
-use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
+use winit::event::{ElementState, Event, KeyEvent, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::WindowId;
-use crate::gui::EguiRenderer;
+
+pub struct Drawing {}
+impl Drawing {
+    pub fn new() -> Self {
+        Self {}
+    }
+    pub fn handle_input(&mut self, event: &WindowEvent) -> bool {
+        match event {
+            WindowEvent::MouseInput { button, state, .. } => {
+                if *button == MouseButton::Left {
+                    println!("Mouse button left {:?} {:?}", button, state);
+                    return true
+                }
+            }
+            _ => {}
+        }
+        false
+    }
+}
 
 struct State {
     window: Arc<winit::window::Window>,
@@ -40,6 +59,7 @@ struct State {
     perf_monitor: PerfMonitor,
     gol_renderer: GoLRenderer,
     gui_renderer: EguiRenderer,
+    drawing: Drawing,
 }
 impl State {
     pub async fn new(window: Arc<winit::window::Window>) -> Self {
@@ -118,7 +138,10 @@ impl State {
         perf_monitor.start("update");
 
         let gol_renderer = GoLRenderer::new(&device, surface_format);
-        let gui_renderer = EguiRenderer::new(&device, surface_format, None, 1, false, window.clone());
+        let gui_renderer =
+            EguiRenderer::new(&device, surface_format, None, 1, false, window.clone());
+
+        let drawing = Drawing::new();
 
         Self {
             surface,
@@ -133,6 +156,7 @@ impl State {
             perf_monitor,
             gol_renderer,
             gui_renderer,
+            drawing
         }
     }
 
@@ -148,9 +172,9 @@ impl State {
     }
 
     pub fn input(&mut self, event: &WindowEvent) -> bool {
-        self.camera_controller.process_events(event);
-        self.gui_renderer.handle_input(&self.window, event);
-        false
+        self.gui_renderer.handle_input(&self.window, event)
+            || self.camera_controller.handle_input(event)
+            || self.drawing.handle_input(event)
     }
 
     pub fn update(&mut self) {
@@ -202,7 +226,7 @@ impl State {
             &view,
             egui_wgpu::ScreenDescriptor {
                 size_in_pixels: [self.size.width, self.size.height],
-                pixels_per_point: self.window.scale_factor() as f32
+                pixels_per_point: self.window.scale_factor() as f32,
             },
             |ui| {
                 egui::Window::new("Streamline CFD")
@@ -224,7 +248,7 @@ impl State {
 
                         // proto_scene.egui(ui);
                     });
-            }
+            },
         );
 
         self.queue.submit(Some(encoder.finish()));

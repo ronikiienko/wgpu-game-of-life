@@ -171,4 +171,13 @@ impl GoLRenderer {
             render_pass.draw(0..6, 0..1);
         }
     }
+
+    pub fn ndc_to_gol_uv(ndc: Vec2, view_proj: Mat3, quad_transform: Mat3) -> Vec2 {
+        // Since quad to which we render is full-ndc, inverting transformations done in shader is enough
+        let view_proj_inv = view_proj.inverse();
+        let quad_transform_inv = quad_transform.inverse();
+        let ndc_3d = Vec2::new(ndc.x, ndc.y).extend(1.0);
+        let uv = quad_transform_inv * view_proj_inv * ndc_3d;
+        uv.truncate()
+    }
 }
