@@ -1,11 +1,11 @@
 mod camera;
-mod game_of_life;
+mod gol;
 mod gol_renderer;
 mod gui;
 mod patterns;
 mod perf_monitor;
 
-use crate::game_of_life::GameOfLife;
+use crate::gol::GoL;
 use crate::gol_renderer::GoLRenderer;
 use crate::patterns::{
     get_blinker, get_heavy_weight_spaceship, get_light_weight_spaceship, get_loaf,
@@ -36,7 +36,7 @@ struct State {
     size: winit::dpi::PhysicalSize<u32>,
     camera: Camera,
     camera_controller: CameraController,
-    game_of_life: GameOfLife,
+    gol: GoL,
     perf_monitor: PerfMonitor,
     gol_renderer: GoLRenderer,
     gui_renderer: EguiRenderer,
@@ -102,7 +102,7 @@ impl State {
 
         let game_width = 25000;
         let game_height = 25000;
-        let game_of_life = GameOfLife::new(&device, game_width, game_height);
+        let game_of_life = GoL::new(&device, game_width, game_height);
         let state: Vec<u8> = (0..game_width * game_height)
             .map(|i| {
                 if i < game_width * game_height / 2 {
@@ -129,7 +129,7 @@ impl State {
             size,
             camera,
             camera_controller,
-            game_of_life,
+            gol: game_of_life,
             perf_monitor,
             gol_renderer,
             gui_renderer,
@@ -158,7 +158,7 @@ impl State {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-        self.game_of_life.update(&self.device, &self.queue);
+        self.gol.update(&self.device, &self.queue);
         self.queue.submit(Some(encoder.finish()));
     }
 
@@ -177,7 +177,7 @@ impl State {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
         let baseline_size = 500;
-        let gol_size_tuple = self.game_of_life.get_size();
+        let gol_size_tuple = self.gol.get_size();
         let gol_size = vec2(gol_size_tuple.0 as f32, gol_size_tuple.1 as f32);
         let scale = vec2(
             gol_size.x / baseline_size as f32,
@@ -188,7 +188,7 @@ impl State {
             &self.device,
             &self.queue,
             &mut encoder,
-            &self.game_of_life,
+            &self.gol,
             &view,
             self.camera.get_matrix(),
             Mat3::from_scale(scale),

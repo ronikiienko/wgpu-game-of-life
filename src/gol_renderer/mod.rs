@@ -1,4 +1,4 @@
-use crate::game_of_life::GameOfLife;
+use crate::gol::GoL;
 use glam::{Mat3, Mat4, Vec2};
 use egui_wgpu::wgpu;
 use wgpu::util::DeviceExt;
@@ -126,7 +126,7 @@ impl GoLRenderer {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
-        gol: &GameOfLife,
+        gol: &GoL,
         target_view: &wgpu::TextureView,
         view_proj: Mat3,
         quad_transform: Mat3,
