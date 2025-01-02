@@ -207,8 +207,8 @@ impl<'a> State<'a> {
         let camera_controller = CameraController::new(0.05);
 
 
-        let game_width = 2500;
-        let game_height = 2500;
+        let game_width = 25000;
+        let game_height = 25000;
         let game_of_life = GameOfLife::new(&device, game_width, game_height);
         let state: Vec<u8> = (0..game_width * game_height).map(|i| {
             if i < game_width * game_height / 2 {

@@ -45,6 +45,6 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     if (val == 1) {
         return vec4<f32>(1.0, 1.0, 1.0, 1.0);
     } else {
-        return vec4<f32>(0.1, 0.1, 0.1, 1.0);
+        return vec4<f32>(0.005, 0.005, 0.005, 1.0);
     }
 }
