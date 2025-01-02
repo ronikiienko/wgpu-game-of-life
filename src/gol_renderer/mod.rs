@@ -1,5 +1,6 @@
 use crate::game_of_life::GameOfLife;
 use glam::{Mat3, Mat4, Vec2};
+use egui_wgpu::wgpu;
 use wgpu::util::DeviceExt;
 
 #[repr(C)]

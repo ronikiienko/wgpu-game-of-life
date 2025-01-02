@@ -1,3 +1,4 @@
+use egui_wgpu::wgpu;
 pub struct GameOfLife {
     tex_a: wgpu::Texture,
     tex_b: wgpu::Texture,

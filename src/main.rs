@@ -1,161 +1,52 @@
+mod camera;
 mod game_of_life;
+mod gol_renderer;
+mod gui;
 mod patterns;
 mod perf_monitor;
-mod gol_renderer;
 
 use crate::game_of_life::GameOfLife;
+use crate::gol_renderer::GoLRenderer;
 use crate::patterns::{
     get_blinker, get_heavy_weight_spaceship, get_light_weight_spaceship, get_loaf,
     get_middle_weight_spaceship, get_penta_decathlon, get_toad,
 };
 use crate::perf_monitor::PerfMonitor;
+use camera::{Camera, CameraController};
+use egui_wgpu::wgpu;
 use glam::{vec2, Mat3, Mat4, Vec2};
+use std::sync::Arc;
 use std::time::Duration;
 use wgpu::util::DeviceExt;
+use winit::application::ApplicationHandler;
 use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
-use winit::event_loop::EventLoop;
+use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
-use winit::window::{Window, WindowBuilder};
-use crate::gol_renderer::GoLRenderer;
+use winit::window::WindowId;
 
-pub struct CameraController {
-    speed: f32,
-    is_up_pressed: bool,
-    is_down_pressed: bool,
-    is_left_pressed: bool,
-    is_right_pressed: bool,
-    wheel: f32,
-}
-impl CameraController {
-    pub fn new(speed: f32) -> Self {
-        Self {
-            speed,
-            is_up_pressed: false,
-            is_down_pressed: false,
-            is_left_pressed: false,
-            is_right_pressed: false,
-            wheel: 0.0,
-        }
-    }
-    pub fn process_events(&mut self, event: &WindowEvent) -> bool {
-        match event {
-            WindowEvent::KeyboardInput {
-                event:
-                    KeyEvent {
-                        state,
-                        physical_key: PhysicalKey::Code(keycode),
-                        ..
-                    },
-                ..
-            } => {
-                let pressed = *state == ElementState::Pressed;
-                match keycode {
-                    KeyCode::KeyW => {
-                        self.is_up_pressed = pressed;
-                        true
-                    }
-                    KeyCode::KeyS => {
-                        self.is_down_pressed = pressed;
-                        true
-                    }
-                    KeyCode::KeyA => {
-                        self.is_left_pressed = pressed;
-                        true
-                    }
-                    KeyCode::KeyD => {
-                        self.is_right_pressed = pressed;
-                        true
-                    }
-                    _ => false,
-                }
-            }
-            WindowEvent::MouseWheel { delta, .. } => {
-                match delta {
-                    winit::event::MouseScrollDelta::LineDelta(_, y) => {
-                        self.wheel = *y;
-                    }
-                    winit::event::MouseScrollDelta::PixelDelta(pos) => {
-                        self.wheel = pos.y as f32;
-                    }
-                }
-                true
-            }
-            _ => false,
-        }
-    }
-    pub fn update_camera(&mut self, camera: &mut Camera) {
-        let mut movement = Vec2::ZERO;
-        if self.is_up_pressed {
-            movement.y += 1.0;
-        }
-        if self.is_down_pressed {
-            movement.y -= 1.0;
-        }
-        if self.is_left_pressed {
-            movement.x -= 1.0;
-        }
-        if self.is_right_pressed {
-            movement.x += 1.0;
-        }
-        camera.zoom *= 1.0 - self.wheel * 0.04;
-        camera.zoom = camera.zoom.clamp(0.1, 100.0);
-        camera.position += movement.normalize_or_zero() * self.speed * camera.zoom;
-        self.wheel = 0.0;
-    }
-}
-pub struct Camera {
-    pub position: Vec2,
-    pub rotation: f32,
-    pub zoom: f32,
-    pub aspect_ratio: f32,
-}
-
-impl Camera {
-    fn get_matrix(&self) -> Mat3 {
-        let view = Mat3::from_scale_angle_translation(
-            vec2(self.zoom, self.zoom),
-            self.rotation,
-            self.position,
-        )
-        .inverse();
-        let projection = Mat3::from_scale(vec2(1.0 / self.aspect_ratio, 1.0));
-        projection * view
-    }
-
-    pub fn new(aspect_ratio: f32) -> Self {
-        Self {
-            position: Vec2::ZERO,
-            rotation: 0.0,
-            zoom: 1.0,
-            aspect_ratio,
-        }
-    }
-}
-
-
-
-struct State<'a> {
-    window: &'a Window,
+struct State {
+    window: Arc<winit::window::Window>,
     device: wgpu::Device,
     queue: wgpu::Queue,
-    surface: wgpu::Surface<'a>,
+    surface: wgpu::Surface<'static>,
     surface_config: wgpu::SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
     camera: Camera,
     camera_controller: CameraController,
     game_of_life: GameOfLife,
     perf_monitor: PerfMonitor,
-    gol_renderer: GoLRenderer
+    gol_renderer: GoLRenderer,
+    // gui_renderer: EguiRenderer,
 }
-impl<'a> State<'a> {
-    pub async fn new(window: &'a Window) -> Self {
+impl State {
+    pub async fn new(window: Arc<winit::window::Window>) -> Self {
         let size = window.inner_size();
 
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
             ..Default::default()
         });
-        let surface = instance.create_surface(window).unwrap();
+        let surface = instance.create_surface(window.clone()).unwrap();
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::default(),
@@ -206,23 +97,25 @@ impl<'a> State<'a> {
         let mut camera = Camera::new(size.width as f32 / size.height as f32);
         let camera_controller = CameraController::new(0.05);
 
-
         let game_width = 25000;
         let game_height = 25000;
         let game_of_life = GameOfLife::new(&device, game_width, game_height);
-        let state: Vec<u8> = (0..game_width * game_height).map(|i| {
-            if i < game_width * game_height / 2 {
-                0
-            } else {
-                1
-            }
-        }).collect();
+        let state: Vec<u8> = (0..game_width * game_height)
+            .map(|i| {
+                if i < game_width * game_height / 2 {
+                    0
+                } else {
+                    1
+                }
+            })
+            .collect();
         game_of_life.write_area(&queue, &state, 0, 0, game_width, game_height);
 
         let mut perf_monitor = PerfMonitor::new();
         perf_monitor.start("update");
 
         let gol_renderer = GoLRenderer::new(&device, surface_format);
+        // let gui_renderer = EguiRenderer::new(&device, surface_format, None, 1, false, window);
 
         Self {
             surface,
@@ -235,7 +128,8 @@ impl<'a> State<'a> {
             camera_controller,
             game_of_life,
             perf_monitor,
-            gol_renderer
+            gol_renderer,
+            // gui_renderer,
         }
     }
 
@@ -256,9 +150,9 @@ impl<'a> State<'a> {
 
     pub fn update(&mut self) {
         self.camera_controller.update_camera(&mut self.camera);
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: None,
-        });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
         self.game_of_life.update(&self.device, &self.queue);
         self.queue.submit(Some(encoder.finish()));
     }
@@ -280,7 +174,10 @@ impl<'a> State<'a> {
         let baseline_size = 500;
         let gol_size_tuple = self.game_of_life.get_size();
         let gol_size = vec2(gol_size_tuple.0 as f32, gol_size_tuple.1 as f32);
-        let scale = vec2(gol_size.x / baseline_size as f32, gol_size.y / baseline_size as f32);
+        let scale = vec2(
+            gol_size.x / baseline_size as f32,
+            gol_size.y / baseline_size as f32,
+        );
 
         self.gol_renderer.rerender(
             &self.device,
@@ -299,66 +196,83 @@ impl<'a> State<'a> {
     }
 }
 
-async fn run() {
-    env_logger::init();
-    let event_loop = EventLoop::new().unwrap();
-    let window = WindowBuilder::new().build(&event_loop).unwrap();
-    let mut state = State::new(&window).await;
+#[derive(Default)]
+pub struct App {
+    state: Option<State>,
+    window: Option<Arc<winit::window::Window>>,
+}
 
-    event_loop
-        .run(move |event, control_flow| {
-            match event {
-                Event::WindowEvent {
-                    ref event,
-                    window_id,
-                } if window_id == state.window.id() => {
-                    if !state.input(event) {
-                        // UPDATED!
-                        match event {
-                            WindowEvent::CloseRequested
-                            | WindowEvent::KeyboardInput {
-                                event:
-                                    KeyEvent {
-                                        state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::Escape),
-                                        ..
-                                    },
-                                ..
-                            } => control_flow.exit(),
-                            WindowEvent::Resized(physical_size) => {
-                                state.resize(*physical_size);
-                            }
-                            WindowEvent::RedrawRequested => {
-                                state.window.request_redraw();
-                                state.update();
-                                match state.render() {
-                                    Ok(_) => {}
-                                    // Reconfigure the surface if it's lost or outdated
-                                    Err(
-                                        wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
-                                    ) => state.resize(state.size),
-                                    // The system is out of memory, we should probably quit
-                                    Err(wgpu::SurfaceError::OutOfMemory) => {
-                                        log::error!("OutOfMemory");
-                                        control_flow.exit();
-                                    }
+impl ApplicationHandler for App {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        let attributes = winit::window::Window::default_attributes();
+        let window = event_loop.create_window(attributes).unwrap();
 
-                                    // This happens when the a frame takes too long to present
-                                    Err(wgpu::SurfaceError::Timeout) => {
-                                        log::warn!("Surface timeout")
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
+        let is_first_window_handle = self.window.is_none();
+        let window_handle = Arc::new(window);
+        self.window = Some(window_handle.clone());
+        if is_first_window_handle {
+            let state = pollster::block_on(State::new(window_handle.clone()));
+            self.state = Some(state);
+        }
+    }
+
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window_id: WindowId,
+        event: WindowEvent,
+    ) {
+        let Some(state) = self.state.as_mut() else {
+            panic!("Window or state not initialized");
+        };
+
+        if window_id != state.window.id() {
+            return;
+        }
+
+        match event {
+            WindowEvent::CloseRequested
+            | WindowEvent::KeyboardInput {
+                event:
+                    KeyEvent {
+                        state: ElementState::Pressed,
+                        physical_key: PhysicalKey::Code(KeyCode::Escape),
+                        ..
+                    },
+                ..
+            } => event_loop.exit(),
+            WindowEvent::Resized(physical_size) => {
+                state.resize(physical_size);
+            }
+            WindowEvent::RedrawRequested => {
+                state.window.request_redraw();
+                state.update();
+                match state.render() {
+                    Ok(_) => {}
+                    // Reconfigure the surface if it's lost or outdated
+                    Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
+                        state.resize(state.size)
+                    }
+                    // The system is out of memory, we should probably quit
+                    Err(wgpu::SurfaceError::OutOfMemory) => {
+                        log::error!("OutOfMemory");
+                        event_loop.exit();
+                    }
+
+                    // This happens when the a frame takes too long to present
+                    Err(wgpu::SurfaceError::Timeout) => {
+                        log::warn!("Surface timeout")
                     }
                 }
-                _ => {}
             }
-        })
-        .unwrap();
+            _ => {}
+        }
+    }
 }
 
 fn main() {
-    pollster::block_on(run());
+    let event_loop = winit::event_loop::EventLoop::builder().build().unwrap();
+    event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
+    let mut app = App::default();
+    event_loop.run_app(&mut app).unwrap();
 }
