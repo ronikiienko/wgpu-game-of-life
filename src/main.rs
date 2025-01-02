@@ -23,6 +23,7 @@ use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::WindowId;
+use crate::gui::EguiRenderer;
 
 struct State {
     window: Arc<winit::window::Window>,
@@ -115,7 +116,7 @@ impl State {
         perf_monitor.start("update");
 
         let gol_renderer = GoLRenderer::new(&device, surface_format);
-        // let gui_renderer = EguiRenderer::new(&device, surface_format, None, 1, false, window);
+        let gui_renderer = EguiRenderer::new(&device, surface_format, None, 1, false, window.clone());
 
         Self {
             surface,
