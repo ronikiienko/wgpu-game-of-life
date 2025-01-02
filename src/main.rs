@@ -229,7 +229,10 @@ impl ApplicationHandler for App {
         if window_id != state.window.id() {
             return;
         }
-
+        let consumed = state.input(&event);
+        if consumed {
+            return;
+        }
         match event {
             WindowEvent::CloseRequested
             | WindowEvent::KeyboardInput {
