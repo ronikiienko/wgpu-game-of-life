@@ -159,7 +159,9 @@ impl GoLManager {
     }
     pub fn update(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
         self.camera_controller.update_camera(&mut self.camera);
-        self.gol.update(device, queue);
+        if !self.config.is_paused {
+            self.gol.update(device, queue);
+        }
     }
     pub fn handle_input(
         &mut self,
