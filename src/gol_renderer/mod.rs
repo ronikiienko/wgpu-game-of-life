@@ -177,7 +177,9 @@ impl GoLRenderer {
         let view_proj_inv = view_proj.inverse();
         let quad_transform_inv = quad_transform.inverse();
         let ndc_3d = Vec2::new(ndc.x, ndc.y).extend(1.0);
-        let uv = quad_transform_inv * view_proj_inv * ndc_3d;
-        uv.truncate()
+        let ndc_transformed = quad_transform_inv * view_proj_inv * ndc_3d;
+        let mut uv = ndc_transformed.truncate() * 0.5 + Vec2::new(0.5, 0.5);
+        uv.y = 1.0 - uv.y;
+        uv
     }
 }

@@ -16,7 +16,7 @@ use crate::perf_monitor::PerfMonitor;
 use camera::{Camera, CameraController};
 use egui::Align2;
 use egui_wgpu::wgpu;
-use glam::{vec2, Mat3, Mat4, Vec2};
+use glam::{vec2, Mat3, Mat4, UVec2, Vec2};
 use std::sync::Arc;
 use std::task::Context;
 use std::time::Duration;
@@ -27,18 +27,51 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::WindowId;
 
-pub struct Drawing {}
+pub struct Drawing {
+    mouse_position: Option<Vec2>,
+}
 impl Drawing {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            mouse_position: None,
+        }
     }
-    pub fn handle_input(&mut self, event: &WindowEvent) -> bool {
+    pub fn handle_input(
+        &mut self,
+        event: &WindowEvent,
+        window: Arc<winit::window::Window>,
+        gol: &GoL,
+        gol_view_proj: Mat3,
+        gol_quad_transform: Mat3,
+        queue: &wgpu::Queue
+    ) -> bool {
         match event {
             WindowEvent::MouseInput { button, state, .. } => {
-                if *button == MouseButton::Left {
-                    println!("Mouse button left {:?} {:?}", button, state);
-                    return true
+                if state.is_pressed() {
+                    if let Some(mouse_position) = self.mouse_position {
+                        let mut ndc = mouse_position / vec2(window.inner_size().width as f32, window.inner_size().height as f32) * 2.0 - vec2(1.0, 1.0);
+                        ndc.y = -ndc.y;
+                        let uv = GoLRenderer::ndc_to_gol_uv(ndc, gol_view_proj, gol_quad_transform);
+                        if uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 {
+                            return true;
+                        }
+                        let pixel_gol_position = uv * vec2(gol.get_size().0 as f32, gol.get_size().1 as f32);
+
+                        let new_value = if *button == MouseButton::Left {
+                            1
+                        } else if *button == MouseButton::Right {
+                            0
+                        } else {
+                            return false;
+                        };
+                        gol.write_area(queue, &[new_value], pixel_gol_position.x as u32, pixel_gol_position.y as u32, 1, 1);
+                        return true;
+                    }
                 }
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                self.mouse_position = Some(vec2(position.x as f32, position.y as f32));
+                return false;
             }
             _ => {}
         }
@@ -58,6 +91,7 @@ struct State {
     gol: GoL,
     perf_monitor: PerfMonitor,
     gol_renderer: GoLRenderer,
+    gol_quad_transform: Mat3,
     gui_renderer: EguiRenderer,
     drawing: Drawing,
 }
@@ -122,7 +156,7 @@ impl State {
 
         let game_width = 25000;
         let game_height = 25000;
-        let game_of_life = GoL::new(&device, game_width, game_height);
+        let gol = GoL::new(&device, game_width, game_height);
         let state: Vec<u8> = (0..game_width * game_height)
             .map(|i| {
                 if i < game_width * game_height / 2 {
@@ -132,7 +166,7 @@ impl State {
                 }
             })
             .collect();
-        game_of_life.write_area(&queue, &state, 0, 0, game_width, game_height);
+        gol.write_area(&queue, &state, 0, 0, game_width, game_height);
 
         let mut perf_monitor = PerfMonitor::new();
         perf_monitor.start("update");
@@ -143,6 +177,15 @@ impl State {
 
         let drawing = Drawing::new();
 
+        let baseline_size = 500;
+        let gol_size_tuple = gol.get_size();
+        let gol_size = vec2(gol_size_tuple.0 as f32, gol_size_tuple.1 as f32);
+        let scale = vec2(
+            gol_size.x / baseline_size as f32,
+            gol_size.y / baseline_size as f32,
+        );
+        let gol_quad_transform = Mat3::from_scale(scale);
+
         Self {
             surface,
             surface_config,
@@ -152,11 +195,12 @@ impl State {
             size,
             camera,
             camera_controller,
-            gol: game_of_life,
+            gol,
             perf_monitor,
             gol_renderer,
             gui_renderer,
-            drawing
+            drawing,
+            gol_quad_transform
         }
     }
 
@@ -174,7 +218,7 @@ impl State {
     pub fn input(&mut self, event: &WindowEvent) -> bool {
         self.gui_renderer.handle_input(&self.window, event)
             || self.camera_controller.handle_input(event)
-            || self.drawing.handle_input(event)
+            || self.drawing.handle_input(event, self.window.clone(), &self.gol, self.camera.get_matrix(), self.gol_quad_transform, &self.queue)
     }
 
     pub fn update(&mut self) {
@@ -200,14 +244,6 @@ impl State {
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        let baseline_size = 500;
-        let gol_size_tuple = self.gol.get_size();
-        let gol_size = vec2(gol_size_tuple.0 as f32, gol_size_tuple.1 as f32);
-        let scale = vec2(
-            gol_size.x / baseline_size as f32,
-            gol_size.y / baseline_size as f32,
-        );
-
         self.gol_renderer.rerender(
             &self.device,
             &self.queue,
@@ -215,7 +251,7 @@ impl State {
             &self.gol,
             &view,
             self.camera.get_matrix(),
-            Mat3::from_scale(scale),
+            self.gol_quad_transform
         );
 
         self.gui_renderer.draw(
@@ -230,7 +266,6 @@ impl State {
             },
             |ui| {
                 egui::Window::new("Streamline CFD")
-                    // .vscroll(true)
                     .default_open(true)
                     .max_width(1000.0)
                     .max_height(800.0)
