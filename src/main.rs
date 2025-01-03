@@ -1,13 +1,15 @@
 mod camera;
 mod gol;
 mod gol_renderer;
-mod gui;
+mod gui_renderer;
 mod patterns;
 mod perf_monitor;
+mod drawing;
+mod gui;
 
 use crate::gol::GoL;
 use crate::gol_renderer::GoLRenderer;
-use crate::gui::EguiRenderer;
+use crate::gui_renderer::EguiRenderer;
 use crate::patterns::{
     get_blinker, get_heavy_weight_spaceship, get_light_weight_spaceship, get_loaf,
     get_middle_weight_spaceship, get_penta_decathlon, get_toad,
@@ -26,59 +28,16 @@ use winit::event::{ElementState, Event, KeyEvent, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::WindowId;
+use drawing::Drawing;
+use crate::gui::add_gui;
 
-pub struct Drawing {
-    mouse_position: Option<Vec2>,
+enum GoLSpeed {
+    Pause,
+    Slow,
+    Normal,
+    Fast,
+    Fastest,
 }
-impl Drawing {
-    pub fn new() -> Self {
-        Self {
-            mouse_position: None,
-        }
-    }
-    pub fn handle_input(
-        &mut self,
-        event: &WindowEvent,
-        window: Arc<winit::window::Window>,
-        gol: &GoL,
-        gol_view_proj: Mat3,
-        gol_quad_transform: Mat3,
-        queue: &wgpu::Queue
-    ) -> bool {
-        match event {
-            WindowEvent::MouseInput { button, state, .. } => {
-                if state.is_pressed() {
-                    if let Some(mouse_position) = self.mouse_position {
-                        let mut ndc = mouse_position / vec2(window.inner_size().width as f32, window.inner_size().height as f32) * 2.0 - vec2(1.0, 1.0);
-                        ndc.y = -ndc.y;
-                        let uv = GoLRenderer::ndc_to_gol_uv(ndc, gol_view_proj, gol_quad_transform);
-                        if uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 {
-                            return true;
-                        }
-                        let pixel_gol_position = uv * vec2(gol.get_size().0 as f32, gol.get_size().1 as f32);
-
-                        let new_value = if *button == MouseButton::Left {
-                            1
-                        } else if *button == MouseButton::Right {
-                            0
-                        } else {
-                            return false;
-                        };
-                        gol.write_area(queue, &[new_value], pixel_gol_position.x as u32, pixel_gol_position.y as u32, 1, 1);
-                        return true;
-                    }
-                }
-            }
-            WindowEvent::CursorMoved { position, .. } => {
-                self.mouse_position = Some(vec2(position.x as f32, position.y as f32));
-                return false;
-            }
-            _ => {}
-        }
-        false
-    }
-}
-
 struct State {
     window: Arc<winit::window::Window>,
     device: wgpu::Device,
@@ -92,6 +51,7 @@ struct State {
     perf_monitor: PerfMonitor,
     gol_renderer: GoLRenderer,
     gol_quad_transform: Mat3,
+    gol_speed: GoLSpeed,
     gui_renderer: EguiRenderer,
     drawing: Drawing,
 }
@@ -200,7 +160,8 @@ impl State {
             gol_renderer,
             gui_renderer,
             drawing,
-            gol_quad_transform
+            gol_quad_transform,
+            gol_speed: GoLSpeed::Normal,
         }
     }
 
@@ -251,7 +212,7 @@ impl State {
             &self.gol,
             &view,
             self.camera.get_matrix(),
-            self.gol_quad_transform
+            self.gol_quad_transform,
         );
 
         self.gui_renderer.draw(
@@ -265,24 +226,11 @@ impl State {
                 pixels_per_point: self.window.scale_factor() as f32,
             },
             |ui| {
-                egui::Window::new("Streamline CFD")
-                    .default_open(true)
-                    .max_width(1000.0)
-                    .max_height(800.0)
-                    .default_width(800.0)
-                    .resizable(true)
-                    .anchor(Align2::LEFT_TOP, [0.0, 0.0])
-                    .show(&ui, |mut ui| {
-                        if ui.add(egui::Button::new("Click me")).clicked() {
-                            println!("PRESSED")
-                        }
-
-                        ui.label("Slider");
-                        // ui.add(egui::Slider::new(_, 0..=120).text("age"));
-                        ui.end_row();
-
-                        // proto_scene.egui(ui);
-                    });
+                let ms_per_frame_opt = self.perf_monitor.get_ms_per_frame("update");
+                let fps_text = ms_per_frame_opt.map_or("Fps: NaN".to_string(), |ms_per_frame| {
+                    format!("Fps: {:.1}", 1000.0 / ms_per_frame)
+                });
+                add_gui(ui, &fps_text);
             },
         );
 
@@ -334,11 +282,11 @@ impl ApplicationHandler for App {
             WindowEvent::CloseRequested
             | WindowEvent::KeyboardInput {
                 event:
-                    KeyEvent {
-                        state: ElementState::Pressed,
-                        physical_key: PhysicalKey::Code(KeyCode::Escape),
-                        ..
-                    },
+                KeyEvent {
+                    state: ElementState::Pressed,
+                    physical_key: PhysicalKey::Code(KeyCode::Escape),
+                    ..
+                },
                 ..
             } => event_loop.exit(),
             WindowEvent::Resized(physical_size) => {
