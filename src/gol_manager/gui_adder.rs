@@ -1,5 +1,5 @@
-use crate::GoLConfig;
 use egui::{Align2, Context};
+use crate::gol_manager::GoLConfig;
 
 pub fn add_gui(ui: &Context, fps_text: &str, gol_config: &mut GoLConfig) {
     egui::Window::new("Foff")

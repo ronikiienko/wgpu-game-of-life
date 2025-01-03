@@ -1,13 +1,9 @@
 use std::sync::Arc;
-use egui::epaint::Shadow;
-use egui::{Context, Visuals};
-use egui_wgpu::ScreenDescriptor;
-use egui_wgpu::Renderer;
-
+use winit::window::Window;
+use egui::{Context, Shadow, Visuals};
 use egui_winit::State;
-use egui_wgpu::wgpu;
-use egui_winit::winit::event::WindowEvent;
-use egui_winit::winit::window::Window;
+use egui_wgpu::{wgpu, Renderer, ScreenDescriptor};
+use winit::event::WindowEvent;
 
 pub struct EguiRenderer {
     pub context: Context,
