@@ -17,7 +17,7 @@ use crate::patterns::{
 };
 use crate::perf_monitor::PerfMonitor;
 use camera::{Camera, CameraController};
-use drawing::Drawing;
+use drawing::GoLDrawing;
 use egui::Align2;
 use egui_wgpu::wgpu;
 use glam::{vec2, Mat3, Mat4, UVec2, Vec2};
@@ -36,32 +36,32 @@ impl GoLKeyboardController {
     pub fn handle_input(&self, event: &WindowEvent, gol_state: &mut GoLState) -> bool {
         if let WindowEvent::KeyboardInput { event, .. } = event {
             if let PhysicalKey::Code(keycode) = event.physical_key {
-                if event.state == ElementState::Pressed {
-                    return false;
+                if event.state == ElementState::Pressed && !event.repeat {
+                    return match keycode {
+                        KeyCode::Space => {
+                            gol_state.is_paused = !gol_state.is_paused;
+                            true
+                        }
+                        KeyCode::Digit1 => {
+                            gol_state.speed = GoLSpeed::Slow;
+                            true
+                        }
+                        KeyCode::Digit2 => {
+                            gol_state.speed = GoLSpeed::Normal;
+                            true
+                        }
+                        KeyCode::Digit3 => {
+                            gol_state.speed = GoLSpeed::Fast;
+                            true
+                        }
+                        KeyCode::Digit4 => {
+                            gol_state.speed = GoLSpeed::Fastest;
+                            true
+                        }
+                        _ => false,
+                    };
                 }
-                return match keycode {
-                    KeyCode::Space => {
-                        gol_state.is_paused = !gol_state.is_paused;
-                        true
-                    }
-                    KeyCode::Digit1 => {
-                        gol_state.speed = GoLSpeed::Slow;
-                        true
-                    }
-                    KeyCode::Digit2 => {
-                        gol_state.speed = GoLSpeed::Normal;
-                        true
-                    }
-                    KeyCode::Digit3 => {
-                        gol_state.speed = GoLSpeed::Fast;
-                        true
-                    }
-                    KeyCode::Digit4 => {
-                        gol_state.speed = GoLSpeed::Fastest;
-                        true
-                    }
-                    _ => false,
-                };
+                return false;
             }
         }
         false
@@ -77,10 +77,111 @@ enum GoLSpeed {
     Fast,
     Fastest,
 }
+impl GoLSpeed {
+    pub fn get_interval(&self) -> Duration {
+        match self {
+            GoLSpeed::Slow => Duration::from_millis(500),
+            GoLSpeed::Normal => Duration::from_millis(100),
+            GoLSpeed::Fast => Duration::from_millis(50),
+            GoLSpeed::Fastest => Duration::from_millis(10),
+        }
+    }
+}
 
 struct GoLState {
     pub is_paused: bool,
     pub speed: GoLSpeed,
+    render_quad_transform: Mat3,
+    gol: GoL,
+    renderer: GoLRenderer,
+    camera: Camera,
+    camera_controller: CameraController,
+    keyboard_controller: GoLKeyboardController,
+    drawing: GoLDrawing,
+}
+impl GoLState {
+    pub fn new(
+        aspect_ratio: f32,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        render_target_format: wgpu::TextureFormat,
+    ) -> Self {
+        let mut camera = Camera::new(aspect_ratio);
+        let camera_controller = CameraController::new(0.05);
+
+        let game_width = 25000;
+        let game_height = 25000;
+        let gol = GoL::new(&device, game_width, game_height);
+        let state: Vec<u8> = (0..game_width * game_height)
+            .map(|i| {
+                if i < game_width * game_height / 2 {
+                    0
+                } else {
+                    1
+                }
+            })
+            .collect();
+        gol.write_area(&queue, &state, 0, 0, game_width, game_height);
+
+        let renderer = GoLRenderer::new(&device, render_target_format);
+
+        let baseline_size = 500;
+        let gol_size_tuple = gol.get_size();
+        let gol_size = vec2(gol_size_tuple.0 as f32, gol_size_tuple.1 as f32);
+        let scale = vec2(
+            gol_size.x / baseline_size as f32,
+            gol_size.y / baseline_size as f32,
+        );
+        let render_quad_transform = Mat3::from_scale(scale);
+
+        Self {
+            is_paused: false,
+            speed: GoLSpeed::Normal,
+            render_quad_transform,
+            gol,
+            renderer,
+            camera,
+            camera_controller,
+            keyboard_controller: GoLKeyboardController::new(),
+            drawing: GoLDrawing::new(),
+        }
+    }
+    pub fn update(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+        self.camera_controller.update_camera(&mut self.camera);
+        self.gol.update(device, queue);
+    }
+    pub fn handle_input(
+        &mut self,
+        event: &WindowEvent,
+        window: Arc<winit::window::Window>,
+        queue: &wgpu::Queue,
+    ) -> bool {
+        self.keyboard_controller.handle_input(event, &mut self)
+            || self.camera_controller.handle_input(event)
+            || self.drawing.handle_input(
+                event,
+                window.clone(),
+                &self.gol,
+                self.camera.get_matrix(),
+                self.render_quad_transform,
+                queue,
+            )
+    }
+    pub fn handle_aspect_ratio_change(&mut self, new_aspect_ratio: f32) {
+        self.camera.aspect_ratio = new_aspect_ratio;
+    }
+
+    pub fn render(&mut self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder, queue: &mut wgpu::Queue, target_view: &wgpu::TextureView) {
+        self.renderer.rerender(
+            &device,
+            &queue,
+            encoder,
+            &self.gol,
+            &target_view,
+            self.camera.get_matrix(),
+            self.render_quad_transform,
+        );
+    }
 }
 
 struct State {
@@ -90,16 +191,9 @@ struct State {
     surface: wgpu::Surface<'static>,
     surface_config: wgpu::SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
-    camera: Camera,
-    camera_controller: CameraController,
-    gol: GoL,
     perf_monitor: PerfMonitor,
-    gol_renderer: GoLRenderer,
-    gol_quad_transform: Mat3,
     gol_state: GoLState,
-    gol_keyboard_controller: GoLKeyboardController,
     gui_renderer: EguiRenderer,
-    drawing: Drawing,
 }
 impl State {
     pub async fn new(window: Arc<winit::window::Window>) -> Self {
@@ -157,40 +251,18 @@ impl State {
         };
         surface.configure(&device, &surface_config);
 
-        let mut camera = Camera::new(size.width as f32 / size.height as f32);
-        let camera_controller = CameraController::new(0.05);
-
-        let game_width = 25000;
-        let game_height = 25000;
-        let gol = GoL::new(&device, game_width, game_height);
-        let state: Vec<u8> = (0..game_width * game_height)
-            .map(|i| {
-                if i < game_width * game_height / 2 {
-                    0
-                } else {
-                    1
-                }
-            })
-            .collect();
-        gol.write_area(&queue, &state, 0, 0, game_width, game_height);
-
         let mut perf_monitor = PerfMonitor::new();
         perf_monitor.start("update");
 
-        let gol_renderer = GoLRenderer::new(&device, surface_format);
         let gui_renderer =
             EguiRenderer::new(&device, surface_format, None, 1, false, window.clone());
 
-        let drawing = Drawing::new();
-
-        let baseline_size = 500;
-        let gol_size_tuple = gol.get_size();
-        let gol_size = vec2(gol_size_tuple.0 as f32, gol_size_tuple.1 as f32);
-        let scale = vec2(
-            gol_size.x / baseline_size as f32,
-            gol_size.y / baseline_size as f32,
+        let gol_state = GoLState::new(
+            size.width as f32 / size.height as f32,
+            &device,
+            &queue,
+            surface_format,
         );
-        let gol_quad_transform = Mat3::from_scale(scale);
 
         Self {
             surface,
@@ -199,19 +271,9 @@ impl State {
             device,
             window,
             size,
-            camera,
-            camera_controller,
-            gol,
             perf_monitor,
-            gol_renderer,
             gui_renderer,
-            drawing,
-            gol_quad_transform,
-            gol_keyboard_controller: GoLKeyboardController::new(),
-            gol_state: GoLState {
-                is_paused: false,
-                speed: GoLSpeed::Normal,
-            },
+            gol_state,
         }
     }
 
@@ -223,34 +285,16 @@ impl State {
         self.surface_config.width = new_size.width;
         self.surface_config.height = new_size.height;
         self.surface.configure(&self.device, &self.surface_config);
-        self.camera.aspect_ratio = new_size.width as f32 / new_size.height as f32;
+        self.gol_state.handle_aspect_ratio_change(new_size.width as f32 / new_size.height as f32);
     }
 
     pub fn input(&mut self, event: &WindowEvent) -> bool {
         self.gui_renderer.handle_input(&self.window, event)
-            || self.camera_controller.handle_input(event)
-            || self.drawing.handle_input(
-                event,
-                self.window.clone(),
-                &self.gol,
-                self.camera.get_matrix(),
-                self.gol_quad_transform,
-                &self.queue,
-            )
-            || self
-                .gol_keyboard_controller
-                .handle_input(event, &mut self.gol_state)
+            || self.gol_state.handle_input(event, self.window.clone(), &self.queue)
     }
 
     pub fn update(&mut self) {
-        self.camera_controller.update_camera(&mut self.camera);
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-        if !self.gol_state.is_paused {
-            self.gol.update(&self.device, &self.queue);
-        }
-        self.queue.submit(Some(encoder.finish()));
+        self.gol_state.update(&self.device, &self.queue);
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -262,15 +306,7 @@ impl State {
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        self.gol_renderer.rerender(
-            &self.device,
-            &self.queue,
-            &mut encoder,
-            &self.gol,
-            &view,
-            self.camera.get_matrix(),
-            self.gol_quad_transform,
-        );
+        self.gol_state.render(&self.device, &mut encoder, &mut self.queue, &view);
 
         self.gui_renderer.draw(
             &self.device,

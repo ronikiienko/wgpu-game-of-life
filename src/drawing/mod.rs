@@ -5,11 +5,11 @@ use egui_wgpu::wgpu;
 use crate::gol::GoL;
 use crate::gol_renderer::GoLRenderer;
 
-pub struct Drawing {
+pub struct GoLDrawing {
     mouse_position: Option<Vec2>,
 }
 
-impl Drawing {
+impl GoLDrawing {
     pub fn new() -> Self {
         Self {
             mouse_position: None,
