@@ -1,14 +1,15 @@
 mod camera;
+mod drawing;
 mod gol;
 mod gol_renderer;
+mod gui_adder;
 mod gui_renderer;
 mod patterns;
 mod perf_monitor;
-mod drawing;
-mod gui;
 
 use crate::gol::GoL;
 use crate::gol_renderer::GoLRenderer;
+use crate::gui_adder::add_gui;
 use crate::gui_renderer::EguiRenderer;
 use crate::patterns::{
     get_blinker, get_heavy_weight_spaceship, get_light_weight_spaceship, get_loaf,
@@ -16,6 +17,7 @@ use crate::patterns::{
 };
 use crate::perf_monitor::PerfMonitor;
 use camera::{Camera, CameraController};
+use drawing::Drawing;
 use egui::Align2;
 use egui_wgpu::wgpu;
 use glam::{vec2, Mat3, Mat4, UVec2, Vec2};
@@ -28,16 +30,59 @@ use winit::event::{ElementState, Event, KeyEvent, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::WindowId;
-use drawing::Drawing;
-use crate::gui::add_gui;
+
+pub struct GoLKeyboardController {}
+impl GoLKeyboardController {
+    pub fn handle_input(&self, event: &WindowEvent, gol_state: &mut GoLState) -> bool {
+        if let WindowEvent::KeyboardInput { event, .. } = event {
+            if let PhysicalKey::Code(keycode) = event.physical_key {
+                if event.state == ElementState::Pressed {
+                    return false;
+                }
+                return match keycode {
+                    KeyCode::Space => {
+                        gol_state.is_paused = !gol_state.is_paused;
+                        true
+                    }
+                    KeyCode::Digit1 => {
+                        gol_state.speed = GoLSpeed::Slow;
+                        true
+                    }
+                    KeyCode::Digit2 => {
+                        gol_state.speed = GoLSpeed::Normal;
+                        true
+                    }
+                    KeyCode::Digit3 => {
+                        gol_state.speed = GoLSpeed::Fast;
+                        true
+                    }
+                    KeyCode::Digit4 => {
+                        gol_state.speed = GoLSpeed::Fastest;
+                        true
+                    }
+                    _ => false,
+                };
+            }
+        }
+        false
+    }
+    pub fn new() -> Self {
+        Self {}
+    }
+}
 
 enum GoLSpeed {
-    Pause,
     Slow,
     Normal,
     Fast,
     Fastest,
 }
+
+struct GoLState {
+    pub is_paused: bool,
+    pub speed: GoLSpeed,
+}
+
 struct State {
     window: Arc<winit::window::Window>,
     device: wgpu::Device,
@@ -51,7 +96,8 @@ struct State {
     perf_monitor: PerfMonitor,
     gol_renderer: GoLRenderer,
     gol_quad_transform: Mat3,
-    gol_speed: GoLSpeed,
+    gol_state: GoLState,
+    gol_keyboard_controller: GoLKeyboardController,
     gui_renderer: EguiRenderer,
     drawing: Drawing,
 }
@@ -161,7 +207,11 @@ impl State {
             gui_renderer,
             drawing,
             gol_quad_transform,
-            gol_speed: GoLSpeed::Normal,
+            gol_keyboard_controller: GoLKeyboardController::new(),
+            gol_state: GoLState {
+                is_paused: false,
+                speed: GoLSpeed::Normal,
+            },
         }
     }
 
@@ -179,7 +229,17 @@ impl State {
     pub fn input(&mut self, event: &WindowEvent) -> bool {
         self.gui_renderer.handle_input(&self.window, event)
             || self.camera_controller.handle_input(event)
-            || self.drawing.handle_input(event, self.window.clone(), &self.gol, self.camera.get_matrix(), self.gol_quad_transform, &self.queue)
+            || self.drawing.handle_input(
+                event,
+                self.window.clone(),
+                &self.gol,
+                self.camera.get_matrix(),
+                self.gol_quad_transform,
+                &self.queue,
+            )
+            || self
+                .gol_keyboard_controller
+                .handle_input(event, &mut self.gol_state)
     }
 
     pub fn update(&mut self) {
@@ -187,16 +247,13 @@ impl State {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-        self.gol.update(&self.device, &self.queue);
+        if !self.gol_state.is_paused {
+            self.gol.update(&self.device, &self.queue);
+        }
         self.queue.submit(Some(encoder.finish()));
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        let updated_summary = self.perf_monitor.start_frame();
-        if updated_summary {
-            println!("{}", self.perf_monitor.get_summary());
-        }
-
         let output = self.surface.get_current_texture()?;
         let view = output
             .texture
@@ -230,7 +287,7 @@ impl State {
                 let fps_text = ms_per_frame_opt.map_or("Fps: NaN".to_string(), |ms_per_frame| {
                     format!("Fps: {:.1}", 1000.0 / ms_per_frame)
                 });
-                add_gui(ui, &fps_text);
+                add_gui(ui, &fps_text, &mut self.gol_state);
             },
         );
 
@@ -282,11 +339,11 @@ impl ApplicationHandler for App {
             WindowEvent::CloseRequested
             | WindowEvent::KeyboardInput {
                 event:
-                KeyEvent {
-                    state: ElementState::Pressed,
-                    physical_key: PhysicalKey::Code(KeyCode::Escape),
-                    ..
-                },
+                    KeyEvent {
+                        state: ElementState::Pressed,
+                        physical_key: PhysicalKey::Code(KeyCode::Escape),
+                        ..
+                    },
                 ..
             } => event_loop.exit(),
             WindowEvent::Resized(physical_size) => {
