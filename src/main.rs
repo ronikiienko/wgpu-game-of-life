@@ -33,29 +33,29 @@ use winit::window::WindowId;
 
 pub struct GoLKeyboardController {}
 impl GoLKeyboardController {
-    pub fn handle_input(&self, event: &WindowEvent, gol_state: &mut GoLState) -> bool {
+    pub fn handle_input(&self, event: &WindowEvent, gol_config: &mut GoLConfig) -> bool {
         if let WindowEvent::KeyboardInput { event, .. } = event {
             if let PhysicalKey::Code(keycode) = event.physical_key {
                 if event.state == ElementState::Pressed && !event.repeat {
                     return match keycode {
                         KeyCode::Space => {
-                            gol_state.is_paused = !gol_state.is_paused;
+                            gol_config.is_paused = !gol_config.is_paused;
                             true
                         }
                         KeyCode::Digit1 => {
-                            gol_state.speed = GoLSpeed::Slow;
+                            gol_config.speed = GoLSpeed::Slow;
                             true
                         }
                         KeyCode::Digit2 => {
-                            gol_state.speed = GoLSpeed::Normal;
+                            gol_config.speed = GoLSpeed::Normal;
                             true
                         }
                         KeyCode::Digit3 => {
-                            gol_state.speed = GoLSpeed::Fast;
+                            gol_config.speed = GoLSpeed::Fast;
                             true
                         }
                         KeyCode::Digit4 => {
-                            gol_state.speed = GoLSpeed::Fastest;
+                            gol_config.speed = GoLSpeed::Fastest;
                             true
                         }
                         _ => false,
@@ -88,9 +88,13 @@ impl GoLSpeed {
     }
 }
 
-struct GoLState {
+struct GoLConfig {
     pub is_paused: bool,
     pub speed: GoLSpeed,
+}
+
+struct GoLState {
+    config: GoLConfig,
     render_quad_transform: Mat3,
     gol: GoL,
     renderer: GoLRenderer,
@@ -98,12 +102,15 @@ struct GoLState {
     camera_controller: CameraController,
     keyboard_controller: GoLKeyboardController,
     drawing: GoLDrawing,
+    gui_renderer: EguiRenderer,
+    perf_monitor: PerfMonitor,
 }
 impl GoLState {
     pub fn new(
         aspect_ratio: f32,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
+        window: Arc<winit::window::Window>,
         render_target_format: wgpu::TextureFormat,
     ) -> Self {
         let mut camera = Camera::new(aspect_ratio);
@@ -134,9 +141,23 @@ impl GoLState {
         );
         let render_quad_transform = Mat3::from_scale(scale);
 
+        let gui_renderer = EguiRenderer::new(
+            &device,
+            render_target_format,
+            None,
+            1,
+            false,
+            window.clone(),
+        );
+
+        let mut perf_monitor = PerfMonitor::new();
+        perf_monitor.start("update");
+
         Self {
-            is_paused: false,
-            speed: GoLSpeed::Normal,
+            config: GoLConfig {
+                is_paused: false,
+                speed: GoLSpeed::Normal,
+            },
             render_quad_transform,
             gol,
             renderer,
@@ -144,6 +165,8 @@ impl GoLState {
             camera_controller,
             keyboard_controller: GoLKeyboardController::new(),
             drawing: GoLDrawing::new(),
+            gui_renderer,
+            perf_monitor,
         }
     }
     pub fn update(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
@@ -156,7 +179,8 @@ impl GoLState {
         window: Arc<winit::window::Window>,
         queue: &wgpu::Queue,
     ) -> bool {
-        self.keyboard_controller.handle_input(event, &mut self)
+        self.gui_renderer.handle_input(&window, event)
+            || self.keyboard_controller.handle_input(event, &mut self.config)
             || self.camera_controller.handle_input(event)
             || self.drawing.handle_input(
                 event,
@@ -171,7 +195,15 @@ impl GoLState {
         self.camera.aspect_ratio = new_aspect_ratio;
     }
 
-    pub fn render(&mut self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder, queue: &mut wgpu::Queue, target_view: &wgpu::TextureView) {
+    pub fn render(
+        &mut self,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        queue: &mut wgpu::Queue,
+        target_view: &wgpu::TextureView,
+        window: &winit::window::Window,
+    ) {
+        self.perf_monitor.start_frame();
         self.renderer.rerender(
             &device,
             &queue,
@@ -180,6 +212,25 @@ impl GoLState {
             &target_view,
             self.camera.get_matrix(),
             self.render_quad_transform,
+        );
+
+        self.gui_renderer.draw(
+            device,
+            queue,
+            encoder,
+            window,
+            &target_view,
+            egui_wgpu::ScreenDescriptor {
+                size_in_pixels: [window.inner_size().width, window.inner_size().height],
+                pixels_per_point: window.scale_factor() as f32,
+            },
+            |ui| {
+                let ms_per_frame_opt = self.perf_monitor.get_ms_per_frame("update");
+                let fps_text = ms_per_frame_opt.map_or("Fps: NaN".to_string(), |ms_per_frame| {
+                    format!("Fps: {:.1}", 1000.0 / ms_per_frame)
+                });
+                add_gui(ui, &fps_text, &mut self.config);
+            },
         );
     }
 }
@@ -191,9 +242,7 @@ struct State {
     surface: wgpu::Surface<'static>,
     surface_config: wgpu::SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
-    perf_monitor: PerfMonitor,
     gol_state: GoLState,
-    gui_renderer: EguiRenderer,
 }
 impl State {
     pub async fn new(window: Arc<winit::window::Window>) -> Self {
@@ -251,16 +300,11 @@ impl State {
         };
         surface.configure(&device, &surface_config);
 
-        let mut perf_monitor = PerfMonitor::new();
-        perf_monitor.start("update");
-
-        let gui_renderer =
-            EguiRenderer::new(&device, surface_format, None, 1, false, window.clone());
-
         let gol_state = GoLState::new(
             size.width as f32 / size.height as f32,
             &device,
             &queue,
+            window.clone(),
             surface_format,
         );
 
@@ -271,8 +315,6 @@ impl State {
             device,
             window,
             size,
-            perf_monitor,
-            gui_renderer,
             gol_state,
         }
     }
@@ -285,12 +327,12 @@ impl State {
         self.surface_config.width = new_size.width;
         self.surface_config.height = new_size.height;
         self.surface.configure(&self.device, &self.surface_config);
-        self.gol_state.handle_aspect_ratio_change(new_size.width as f32 / new_size.height as f32);
+        self.gol_state
+            .handle_aspect_ratio_change(new_size.width as f32 / new_size.height as f32);
     }
 
     pub fn input(&mut self, event: &WindowEvent) -> bool {
-        self.gui_renderer.handle_input(&self.window, event)
-            || self.gol_state.handle_input(event, self.window.clone(), &self.queue)
+        self.gol_state.handle_input(event, self.window.clone(), &self.queue)
     }
 
     pub fn update(&mut self) {
@@ -306,26 +348,8 @@ impl State {
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        self.gol_state.render(&self.device, &mut encoder, &mut self.queue, &view);
-
-        self.gui_renderer.draw(
-            &self.device,
-            &self.queue,
-            &mut encoder,
-            &self.window,
-            &view,
-            egui_wgpu::ScreenDescriptor {
-                size_in_pixels: [self.size.width, self.size.height],
-                pixels_per_point: self.window.scale_factor() as f32,
-            },
-            |ui| {
-                let ms_per_frame_opt = self.perf_monitor.get_ms_per_frame("update");
-                let fps_text = ms_per_frame_opt.map_or("Fps: NaN".to_string(), |ms_per_frame| {
-                    format!("Fps: {:.1}", 1000.0 / ms_per_frame)
-                });
-                add_gui(ui, &fps_text, &mut self.gol_state);
-            },
-        );
+        self.gol_state
+            .render(&self.device, &mut encoder, &mut self.queue, &view, &self.window);
 
         self.queue.submit(Some(encoder.finish()));
         output.present();
