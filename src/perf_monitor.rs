@@ -49,7 +49,7 @@ impl PerfMonitor {
         })
     }
 
-    // pub fn get_fps(&self, label: &str) -> Option<f32> {
-    //
-    // }
+    pub fn get_ms_per_frame(&self, label: &str) -> Option<f32> {
+        self.ms_per_frames.get(label).map(|ms| *ms)
+    }
 }
