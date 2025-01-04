@@ -6,8 +6,9 @@ use std::sync::Arc;
 use glam::{vec2, Mat3};
 use winit::event::{ElementState, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use egui_wgpu::wgpu;
+use egui_wgpu::wgpu::Instance;
 use crate::drawing::GoLDrawing;
 use crate::gol::GoL;
 use crate::gol_renderer::GoLRenderer;
@@ -29,21 +30,34 @@ impl GoLKeyboardController {
                             true
                         }
                         KeyCode::Digit1 => {
-                            gol_config.speed = GoLSpeed::Slow;
+                            gol_config.speed = GoLSpeed::Slowest;
                             true
                         }
                         KeyCode::Digit2 => {
-                            gol_config.speed = GoLSpeed::Normal;
+                            gol_config.speed = GoLSpeed::Slower;
                             true
                         }
                         KeyCode::Digit3 => {
-                            gol_config.speed = GoLSpeed::Fast;
+                            gol_config.speed = GoLSpeed::Slow;
                             true
                         }
                         KeyCode::Digit4 => {
+                            gol_config.speed = GoLSpeed::Normal;
+                            true
+                        }
+                        KeyCode::Digit5 => {
+                            gol_config.speed = GoLSpeed::Fast;
+                            true
+                        }
+                        KeyCode::Digit6 => {
+                            gol_config.speed = GoLSpeed::Faster;
+                            true
+                        }
+                        KeyCode::Digit7 => {
                             gol_config.speed = GoLSpeed::Fastest;
                             true
                         }
+
                         _ => false,
                     };
                 }
@@ -58,19 +72,25 @@ impl GoLKeyboardController {
 }
 
 enum GoLSpeed {
+    Slowest,
+    Slower,
     Slow,
     Normal,
     Fast,
+    Faster,
     Fastest,
 }
 
 impl GoLSpeed {
     pub fn get_interval(&self) -> Duration {
         match self {
-            GoLSpeed::Slow => Duration::from_millis(500),
+            GoLSpeed::Slowest => Duration::from_millis(1000),
+            GoLSpeed::Slower => Duration::from_millis(500),
+            GoLSpeed::Slow => Duration::from_millis(250),
             GoLSpeed::Normal => Duration::from_millis(100),
-            GoLSpeed::Fast => Duration::from_millis(50),
-            GoLSpeed::Fastest => Duration::from_millis(10),
+            GoLSpeed::Fast => Duration::from_millis(30),
+            GoLSpeed::Faster => Duration::from_millis(15),
+            GoLSpeed::Fastest => Duration::from_millis(1),
         }
     }
 }
@@ -91,6 +111,9 @@ pub struct GoLManager {
     drawing: GoLDrawing,
     gui_renderer: EguiRenderer,
     perf_monitor: PerfMonitor,
+    time_accumulator: Duration,
+    last_update: Instant,
+    max_ms_per_update: Duration,
 }
 
 impl GoLManager {
@@ -104,8 +127,8 @@ impl GoLManager {
         let mut camera = Camera::new(aspect_ratio);
         let camera_controller = CameraController::new(0.05);
 
-        let game_width = 25000;
-        let game_height = 25000;
+        let game_width = 32000;
+        let game_height = 32000;
         let gol = GoL::new(&device, game_width, game_height);
         let state: Vec<u8> = (0..game_width * game_height)
             .map(|i| {
@@ -155,12 +178,27 @@ impl GoLManager {
             drawing: GoLDrawing::new(),
             gui_renderer,
             perf_monitor,
+            time_accumulator: Duration::from_secs(0),
+            last_update: Instant::now(),
+            max_ms_per_update: Duration::from_millis(50),
         }
     }
     pub fn update(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
         self.camera_controller.update_camera(&mut self.camera);
-        if !self.config.is_paused {
-            self.gol.update(device, queue);
+
+        // don't update if last update took too long. This is to prevent snowballing updates.
+        // For example, if simulation can't keep up update takes too long -> next update would take even longer (since last update took longer and more updates are queued up)
+        if !self.config.is_paused && self.last_update.elapsed() < self.max_ms_per_update {
+            self.time_accumulator += self.last_update.elapsed();
+            self.last_update = Instant::now();
+
+            while self.time_accumulator >= self.config.speed.get_interval() {
+                self.time_accumulator -= self.config.speed.get_interval();
+                self.gol.update(device, queue);
+            }
+        } else {
+            self.last_update = Instant::now();
+            self.time_accumulator = Duration::from_secs(0);
         }
     }
     pub fn handle_input(
