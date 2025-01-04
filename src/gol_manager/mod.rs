@@ -2,20 +2,19 @@ mod gui_renderer;
 mod gui_adder;
 mod camera;
 
-use std::sync::Arc;
-use glam::{vec2, Mat3};
-use winit::event::{ElementState, WindowEvent};
-use winit::keyboard::{KeyCode, PhysicalKey};
-use std::time::{Duration, Instant};
-use egui_wgpu::wgpu;
-use egui_wgpu::wgpu::Instance;
 use crate::drawing::GoLDrawing;
 use crate::gol::GoL;
+use crate::gol_manager::camera::{Camera, CameraController};
 use crate::gol_renderer::GoLRenderer;
+use crate::perf_monitor::PerfMonitor;
+use egui_wgpu::wgpu;
+use glam::{vec2, Mat3};
 use gui_adder::add_gui;
 use gui_renderer::EguiRenderer;
-use crate::gol_manager::camera::{Camera, CameraController};
-use crate::perf_monitor::PerfMonitor;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use winit::event::{ElementState, WindowEvent};
+use winit::keyboard::{KeyCode, PhysicalKey};
 
 pub struct GoLKeyboardController {}
 
@@ -29,35 +28,6 @@ impl GoLKeyboardController {
                             gol_config.is_paused = !gol_config.is_paused;
                             true
                         }
-                        KeyCode::Digit1 => {
-                            gol_config.speed = GoLSpeed::Slowest;
-                            true
-                        }
-                        KeyCode::Digit2 => {
-                            gol_config.speed = GoLSpeed::Slower;
-                            true
-                        }
-                        KeyCode::Digit3 => {
-                            gol_config.speed = GoLSpeed::Slow;
-                            true
-                        }
-                        KeyCode::Digit4 => {
-                            gol_config.speed = GoLSpeed::Normal;
-                            true
-                        }
-                        KeyCode::Digit5 => {
-                            gol_config.speed = GoLSpeed::Fast;
-                            true
-                        }
-                        KeyCode::Digit6 => {
-                            gol_config.speed = GoLSpeed::Faster;
-                            true
-                        }
-                        KeyCode::Digit7 => {
-                            gol_config.speed = GoLSpeed::Fastest;
-                            true
-                        }
-
                         _ => false,
                     };
                 }
@@ -71,33 +41,14 @@ impl GoLKeyboardController {
     }
 }
 
-enum GoLSpeed {
-    Slowest,
-    Slower,
-    Slow,
-    Normal,
-    Fast,
-    Faster,
-    Fastest,
-}
-
-impl GoLSpeed {
-    pub fn get_interval(&self) -> Duration {
-        match self {
-            GoLSpeed::Slowest => Duration::from_millis(1000),
-            GoLSpeed::Slower => Duration::from_millis(500),
-            GoLSpeed::Slow => Duration::from_millis(250),
-            GoLSpeed::Normal => Duration::from_millis(100),
-            GoLSpeed::Fast => Duration::from_millis(30),
-            GoLSpeed::Faster => Duration::from_millis(15),
-            GoLSpeed::Fastest => Duration::from_millis(1),
-        }
-    }
-}
-
 pub struct GoLConfig {
     pub is_paused: bool,
-    pub speed: GoLSpeed,
+    pub target_tps: u32,
+}
+impl GoLConfig {
+    pub fn get_update_interval(&self) -> Duration {
+        Duration::from_micros(1_000_000 / self.target_tps as u64)
+    }
 }
 
 pub struct GoLManager {
@@ -127,8 +78,8 @@ impl GoLManager {
         let mut camera = Camera::new(aspect_ratio);
         let camera_controller = CameraController::new(0.05);
 
-        let game_width = 32000;
-        let game_height = 32000;
+        let game_width = 2000;
+        let game_height = 2000;
         let gol = GoL::new(&device, game_width, game_height);
         let state: Vec<u8> = (0..game_width * game_height)
             .map(|i| {
@@ -167,7 +118,7 @@ impl GoLManager {
         Self {
             config: GoLConfig {
                 is_paused: false,
-                speed: GoLSpeed::Normal,
+                target_tps: 60,
             },
             render_quad_transform,
             gol,
@@ -192,8 +143,8 @@ impl GoLManager {
             self.time_accumulator += self.last_update.elapsed();
             self.last_update = Instant::now();
 
-            while self.time_accumulator >= self.config.speed.get_interval() {
-                self.time_accumulator -= self.config.speed.get_interval();
+            while self.time_accumulator >= self.config.get_update_interval() {
+                self.time_accumulator -= self.config.get_update_interval();
                 self.gol.update(device, queue);
             }
         } else {

@@ -16,6 +16,10 @@ pub fn add_gui(ui: &Context, fps_text: &str, gol_config: &mut GoLConfig) {
             if pause_button_response.clicked() {
                 gol_config.is_paused = !gol_config.is_paused;
             }
+
+            let slider = egui::Slider::new(&mut gol_config.target_tps, 1..=1000).text("Target TPS").logarithmic(true);
+            let tps_slider_response = ui.add(slider);
+
             ui.end_row();
         });
 }
